@@ -35,6 +35,7 @@
   on your network. This will try and setup your device with a static IP address of your chosing. See below for more details.
 */
 #define WIFI_STATIC_IP      false
+//#define FAE_MOD                   //Option for the modified PCB that includes an ESP-12F module
 
 /* .--------------------------------------------------------. */
 /* | ___         _               ___       __ _             | */
@@ -140,7 +141,7 @@ IPAddress wifiPrimaryDns(8, 8, 8, 8);
   behave a little strange.
 */
 //The current version of code to display on the UI
-const char* espVersion = "2.2.0";
+const char* espVersion = "2.3.0";
 
 //All the letters on the units that we have to be displayed. You can change these if it so pleases at your own risk
 const char letters[] = {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '$', '&', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '.', '-', '?', '!'};
@@ -216,13 +217,19 @@ void setup() {
 #if SERIAL_ENABLE == true
   //Setup so we can see serial messages
   Serial.begin(SERIAL_BAUDRATE);
-#else
+#elif !defined(FAE_MOD)
   //For ESP01 only
   Wire.begin(1, 3); 
   
   //De-activate I2C if debugging the ESP, otherwise serial does not work
   //Wire.begin(D1, D2); //For NodeMCU testing only SDA=D1 and SCL=D2
 #endif
+
+#ifdef FAE_MOD
+  //Fae Mod
+  Wire.begin(4, 5);
+#endif
+
   SerialPrintln("");
   SerialPrintln("#######################################################");
   SerialPrintln("..............Split Flap Display Starting..............");
