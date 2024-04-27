@@ -187,7 +187,7 @@ void rotateToLetter(int toLetter) {
     posCurrentLetter = displayedLetter;
     //int amountLetters = sizeof(letters) / sizeof(String);
 #ifdef SERIAL_ENABLE
-    Serial.print("go to letter: ");
+    Serial.print(F("go to letter: "));
     Serial.println(letters[toLetter]);
 #endif
     //go to letter, but only if available (>-1)
@@ -216,7 +216,7 @@ void rotateToLetter(int toLetter) {
       else {
         //full rotation is needed, good time for a calibration
 #ifdef SERIAL_ENABLE
-        Serial.println("full rotation incl. calibration");
+        Serial.println(F("full rotation incl. calibration"));
 #endif
         calibrate(false); //calibrate revolver and do not stop motor
         //startMotor();
@@ -291,7 +291,7 @@ void getOffset() {
     calOffset = 0;
   }
 #ifdef SERIAL_ENABLE
-  Serial.print("CalOffset from EEPROM: ");
+  Serial.print(F("CalOffset from EEPROM: "));
   Serial.print(calOffset);
   Serial.println();
 #endif
@@ -300,7 +300,7 @@ void getOffset() {
 //doing a calibration of the revolver using the hall sensor
 int calibrate(bool initialCalibration) {
 #ifdef SERIAL_ENABLE
-  Serial.println("calibrate revolver");
+  Serial.println(F("calibrate revolver"));
 #endif
   currentlyrotating = 1; //set active state to active
   bool reachedMarker = false;
@@ -324,7 +324,7 @@ int calibrate(bool initialCalibration) {
       displayedLetter = 0;
       missedSteps = 0;
 #ifdef SERIAL_ENABLE
-      Serial.println("revolver calibrated");
+      Serial.println(F("revolver calibrated"));
 #endif
       //Only stop motor for initial calibration
       if (initialCalibration) {
@@ -338,7 +338,7 @@ int calibrate(bool initialCalibration) {
       desiredLetter = 0;
       reachedMarker = true;
 #ifdef SERIAL_ENABLE
-      Serial.println("calibration revolver failed");
+      Serial.println(F("calibration revolver failed"));
 #endif
       stopMotor();
       return -1;
@@ -360,7 +360,7 @@ void stopMotor() {
   digitalWrite(STEPPERPIN3, LOW);
   digitalWrite(STEPPERPIN4, LOW);
 #ifdef SERIAL_ENABLE
-  Serial.println("Motor Stop");
+  Serial.println(F("Motor Stop"));
 #endif
   currentlyrotating = 0; //set active state to not active
   delay(100);
@@ -368,7 +368,7 @@ void stopMotor() {
 
 void startMotor() {
 #ifdef SERIAL_ENABLE
-  Serial.println("Motor Start");
+  Serial.println(F("Motor Start"));
 #endif
   currentlyrotating = 1; //set active state to active
   digitalWrite(STEPPERPIN1, lastInd1);
