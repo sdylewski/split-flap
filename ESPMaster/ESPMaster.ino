@@ -337,9 +337,10 @@ void setup() {
 
       bool submissionError = false;
       
-      long newMessageScheduleDateTimeUnixValue;
-      bool newMessageScheduleEnabledValue, newMessageScheduleShowIndefinitely;
-      String newAlignmentValue, newDeviceModeValue, newFlapSpeedValue, newInputTextValue, newCountdownToDateUnixValue;
+      bool newMessageScheduleEnabledValue, newMessageScheduleShowIndefinitely = false;
+      long newMessageScheduleDateTimeUnixValue = -1;
+      String newAlignmentValue, newDeviceModeValue, newFlapSpeedValue, newInputTextValue, newCountdownToDateUnixValue = "";
+      bool hasNewInputTextValue = false;
       
       int params = request->params();
       for (int paramIndex = 0; paramIndex < params; paramIndex++) {
@@ -377,6 +378,7 @@ void setup() {
           //HTTP POST inputText value
           if (p->name() == PARAM_INPUT_TEXT) {
             newInputTextValue = p->value().c_str();
+            hasNewInputTextValue = true;
           }
 
           //HTTP POST Schedule Enabled
@@ -432,7 +434,7 @@ void setup() {
         lastReceivedMessageDateTime = timezone.dateTime("d M y H:i:s");
 
         //Only if a new alignment value
-        if (alignment != newAlignmentValue) {
+        if (newAlignmentValue != "" && alignment != newAlignmentValue) {
           alignment = newAlignmentValue;
           alignmentUpdated = true;
 
@@ -441,7 +443,7 @@ void setup() {
         }
 
         //Only if a new flap speed value
-        if (flapSpeed != newFlapSpeedValue) {
+        if (newFlapSpeedValue != "" && flapSpeed != newFlapSpeedValue) {
           flapSpeed = newFlapSpeedValue;
 
           writeFile(LittleFS, flapSpeedPath, flapSpeed.c_str());
@@ -449,7 +451,7 @@ void setup() {
         }
 
         //Only if countdown date has changed
-        if (countdownToDateUnix != newCountdownToDateUnixValue) {
+        if (newCountdownToDateUnixValue != "" && countdownToDateUnix != newCountdownToDateUnixValue) {
           countdownToDateUnix = newCountdownToDateUnixValue;
 
           writeFile(LittleFS, countdownPath, countdownToDateUnix.c_str());
@@ -464,7 +466,7 @@ void setup() {
         }
         else {
           //Only if device mode has changed
-          if (deviceMode != newDeviceModeValue) {
+          if (newDeviceModeValue != "" && deviceMode != newDeviceModeValue) {
             deviceMode = newDeviceModeValue;
 
             writeFile(LittleFS, deviceModePath, deviceMode.c_str());
@@ -472,7 +474,7 @@ void setup() {
           }
 
           //Only if we are showing text
-          if (deviceMode == DEVICE_MODE_TEXT) {
+          if (hasNewInputTextValue && deviceMode == DEVICE_MODE_TEXT) {
             inputText = newInputTextValue;
           }
         }
