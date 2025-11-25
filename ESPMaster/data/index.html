@@ -189,8 +189,9 @@
 			<div class="card-grid">
 				<div class="card card-full">
 					<p class="card-title">Serial Log (<span id="spanLogCount">0</span> messages) 
+						<button id="btnToggleSerialLog" onclick="toggleSerialLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Hide</button>
 						<button onclick="copySerialLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Copy Full Log</button>
-						<button onclick="refreshLog()" style="float: right; padding: 5px 10px; font-size: 0.9em;">Refresh</button>
+						<button onclick="refreshLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Refresh</button>
 					</p>
 					<div id="containerSerialLog" style="background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; max-height: 400px; overflow-y: auto; border-radius: 4px;">
 						<div style="color: #888;">Loading log...</div>

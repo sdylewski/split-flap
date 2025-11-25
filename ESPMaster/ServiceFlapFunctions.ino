@@ -171,12 +171,16 @@ bool isDisplayMoving() {
   for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
     displayState[unitIndex] = checkIfMoving(unitIndex);
     if (displayState[unitIndex] == 1) {
-      SerialPrintln("A unit in the display is busy");
+      SerialPrint("Unit ");
+      SerialPrint(unitIndex);
+      SerialPrintln(" is busy (moving)");
       return true;
     } 
     //If unit is not available through i2c
     else if (displayState[unitIndex] == -1) {
-      SerialPrintln("A unit in the display is sleeping");
+      SerialPrint("Unit ");
+      SerialPrint(unitIndex);
+      SerialPrintln(" is sleeping/not responding");
       return true;
     }
   }
@@ -187,18 +191,48 @@ bool isDisplayMoving() {
 
 //Checks if single unit is moving
 int checkIfMoving(int address) {
-  int active;
   Wire.requestFrom(address, ANSWER_SIZE, 1);
-  active = Wire.read();
-
+  
+  if (Wire.available() == 0) {
+    SerialPrint("ERROR: Unit ");
+    SerialPrint(address);
+    SerialPrintln(" - No response (no data available)");
+    
+    // Check I2C error
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+    SerialPrint("  I2C error code: ");
+    SerialPrintln(error);
+    
+    if (error == 2) {
+      SerialPrintln("  -> Address received NACK (device not found)");
+    } else if (error == 3) {
+      SerialPrintln("  -> Data received NACK");
+    } else if (error == 4) {
+      SerialPrintln("  -> Unknown I2C error");
+    } else if (error == 5) {
+      SerialPrintln("  -> Timeout");
+    }
+    
+    return -1;
+  }
+  
+  int active = Wire.read();
+  SerialPrint("Unit ");
   SerialPrint(address);
-  SerialPrint(":");
+  SerialPrint(" status: ");
   SerialPrintln(active);
 
   if (active == -1) {
-    SerialPrintln("Try to wake up unit");
+    SerialPrint("WARNING: Unit ");
+    SerialPrint(address);
+    SerialPrintln(" returned -1 (sleeping), attempting wake-up...");
     Wire.beginTransmission(address);
-    Wire.endTransmission();
+    byte error = Wire.endTransmission();
+    if (error != 0) {
+      SerialPrint("  Wake-up failed, I2C error: ");
+      SerialPrintln(error);
+    }
   }
   
   return active;

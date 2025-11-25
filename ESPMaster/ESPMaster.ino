@@ -32,7 +32,7 @@
 #define SERIAL_BAUDRATE     115200  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
 #define LED_ENABLE          true   //Option to enable LED debug blink codes (set to false if not using LED)
-#define STARTUP_DEBUG_PAGE_ENABLE true  //Option to show startup debug page with serial log before normal page
+#define DEBUG_ENABLE true  //Enable debug features: startup debug page, error status panel, page load debug log, and serial debug log at bottom of page
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices
@@ -269,7 +269,7 @@ const char* flapSpeedPath = "/flapspeed.txt";
 const char* deviceModePath = "/devicemode.txt";
 const char* countdownPath = "/countdown.txt";
 const char* scheduledMessagesPath = "/scheduled-messages.txt";
-const char* startupDebugModePath = "/startupdebugmode.txt";
+const char* debugModePath = "/debugmode.txt";
 
 //Variables for storing things for checking and use in normal running
 String alignment = "";
@@ -283,7 +283,7 @@ bool alignmentUpdated = false;
 bool isPendingReboot = false;
 bool isPendingUnitsReset = false;
 bool isWifiConfigured = false;
-bool showStartupDebugPage = true; // Default to showing debug page on first boot
+bool showDebugPage = true; // Default to showing debug page on first boot
 volatile bool webRequestActive = false; // Flag to skip display updates during web requests
 LList<ScheduledMessage> scheduledMessages;
 Timezone timezone; 
@@ -392,6 +392,13 @@ void setup() {
   blinkLed(1, 100, 50); // Quick blink to show startup
 #endif
 
+  // I2C bus scan on startup
+  delay(500); // Give I2C bus time to stabilize
+  SerialPrintln("");
+  SerialPrintln("=== I2C Bus Scan on Startup ===");
+  scanI2CBus();
+  SerialPrintln("");
+
   SerialPrintln("");
   SerialPrintln("#######################################################");
   SerialPrintln("..............Split Flap Display Starting..............");
@@ -457,11 +464,11 @@ void setup() {
     initialiseFileSystem();
     loadValuesFromFileSystem();
     
-    // Load startup debug page mode setting
-#if STARTUP_DEBUG_PAGE_ENABLE == true
-    String debugModeSetting = readFile(LittleFS, startupDebugModePath, "true");
-    showStartupDebugPage = (debugModeSetting == "true");
-    SerialPrintln("DEBUG: Startup debug page mode: " + String(showStartupDebugPage ? "enabled" : "disabled"));
+    // Load debug mode setting
+#if DEBUG_ENABLE == true
+    String debugModeSetting = readFile(LittleFS, debugModePath, "true");
+    showDebugPage = (debugModeSetting == "true");
+    SerialPrintln("DEBUG: Debug mode: " + String(showDebugPage ? "enabled" : "disabled") + " (controls startup page, error status, page load log, and serial log)");
 #endif
 
 #if OTA_ENABLE == true
@@ -478,13 +485,13 @@ void setup() {
       unsigned long pageRequestStart = millis();
       SerialPrintln("DEBUG: Request Home Page Received");
       
-#if STARTUP_DEBUG_PAGE_ENABLE == true
-      // If startup debug page is enabled and we're still in debug mode, show debug page
-      if (showStartupDebugPage) {
+#if DEBUG_ENABLE == true
+      // If debug mode is enabled and we're still in debug mode, show debug page
+      if (showDebugPage) {
         // Generate debug HTML page with live log
         IPAddress ip = WiFi.localIP();
         String html = "<!DOCTYPE html><html><head>";
-        html += "<title>Split Flap - Startup Debug</title>";
+        html += "<title>Split Flap - Debug Mode</title>";
         html += "<meta name='viewport' content='width=device-width, initial-scale=1'>";
         html += "<style>";
         html += "body { font-family: Arial, sans-serif; margin: 20px; background: #1e1e1e; color: #d4d4d4; }";
@@ -500,10 +507,10 @@ void setup() {
         html += ".status { color: #4ec9b0; font-weight: bold; margin: 10px 0; }";
         html += "</style>";
         html += "</head><body>";
-        html += "<h1>Split Flap - Startup Debug Mode</h1>";
+        html += "<h1>Split Flap - Debug Mode</h1>";
         html += "<button onclick='continueToNormal()'>Continue to Normal Mode</button>";
         html += "<div class='status'>Current Status: " + debugStatus + "</div>";
-        html += "<p>This page shows the initialization log. Review the messages below.</p>";
+        html += "<p>Debug mode is enabled. This page shows the initialization log. When you continue to normal mode, you'll also see error status panel, page load debug log, and serial debug log features.</p>";
         html += "<div class='log-container' id='logContainer'>";
         html += "<div style='color: #888;'>Loading log...</div>";
         html += "</div>";
@@ -679,19 +686,64 @@ void setup() {
       request->send(200, "application/json", jsonString);
     });
     
-#if STARTUP_DEBUG_PAGE_ENABLE == true
+    // I2C bus scanner endpoint for diagnostics
+    webServer.on("/i2c-scan", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("DEBUG: I2C scan requested");
+      JsonDocument doc;
+      doc["scanTime"] = millis();
+      
+      int foundCount = 0;
+      for (int address = 0; address < 16; address++) {
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+        
+        if (error == 0) {
+          doc["devices"][foundCount]["address"] = address;
+          
+          // Try to read status
+          Wire.requestFrom(address, 1, 1);
+          if (Wire.available()) {
+            int status = Wire.read();
+            doc["devices"][foundCount]["status"] = status;
+            if (status == 0) {
+              doc["devices"][foundCount]["statusText"] = "ready";
+            } else if (status == 1) {
+              doc["devices"][foundCount]["statusText"] = "busy";
+            } else {
+              doc["devices"][foundCount]["statusText"] = "unknown";
+            }
+          } else {
+            doc["devices"][foundCount]["status"] = -1;
+            doc["devices"][foundCount]["statusText"] = "no response";
+          }
+          foundCount++;
+        }
+        
+        yield();
+        delay(10);
+      }
+      
+      doc["foundCount"] = foundCount;
+      doc["expectedCount"] = UNITS_AMOUNT;
+      
+      String jsonString;
+      serializeJson(doc, jsonString);
+      request->send(200, "application/json", jsonString);
+    });
+    
+#if DEBUG_ENABLE == true
     webServer.on("/exit-debug-mode", HTTP_GET, [](AsyncWebServerRequest * request) {
       SerialPrintln("DEBUG: Request to exit debug mode received");
-      showStartupDebugPage = false;
-      writeFile(LittleFS, startupDebugModePath, "false");
-      request->send(200, "text/plain", "OK");
+      showDebugPage = false;
+      writeFile(LittleFS, debugModePath, "false");
+      request->send(200, "text/plain", "OK - Debug mode disabled. Startup debug page, error status, and debug logs will be hidden.");
     });
     
     webServer.on("/enable-debug-mode", HTTP_GET, [](AsyncWebServerRequest * request) {
       SerialPrintln("DEBUG: Request to enable debug mode received");
-      showStartupDebugPage = true;
-      writeFile(LittleFS, startupDebugModePath, "true");
-      request->send(200, "text/plain", "OK - Debug mode enabled. Refresh page to see debug page.");
+      showDebugPage = true;
+      writeFile(LittleFS, debugModePath, "true");
+      request->send(200, "text/plain", "OK - Debug mode enabled. This enables: startup debug page, error status panel, page load debug log, and serial debug log. Refresh page to see changes.");
     });
 #endif
     
@@ -1182,6 +1234,133 @@ void loop() {
       yield(); // Give web server time to process
     }
   }
+}
+
+// Scan I2C bus and report all found devices
+void scanI2CBus() {
+  SerialPrintln("========================================");
+  SerialPrintln("I2C Bus Scan - Checking addresses 0-15");
+  SerialPrintln("========================================");
+  
+  int foundCount = 0;
+  bool foundUnits[16] = {false}; // Track which addresses are found
+  int unitStatus[16] = {-2}; // Track status of each address (-2 = not found, -1 = sleeping, 0 = ready, 1 = busy)
+  
+  // Scan all possible I2C addresses (0-15)
+  for (int address = 0; address < 16; address++) {
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+    
+    if (error == 0) {
+      foundUnits[address] = true;
+      foundCount++;
+      
+      SerialPrint("✓ Found device at address ");
+      SerialPrint(address);
+      
+      // Try to read status from this address (only for addresses 0-15 which are our units)
+      if (address < 16) {
+        Wire.requestFrom(address, 1, 1);
+        if (Wire.available()) {
+          int status = Wire.read();
+          unitStatus[address] = status;
+          
+          SerialPrint(" - Status: ");
+          SerialPrint(status);
+          
+          if (status == 0) {
+            SerialPrintln(" (READY)");
+          } else if (status == 1) {
+            SerialPrintln(" (BUSY/MOVING)");
+          } else if (status == -1) {
+            SerialPrintln(" (SLEEPING)");
+          } else {
+            SerialPrintln(" (UNKNOWN)");
+          }
+        } else {
+          SerialPrintln(" - No status response");
+          unitStatus[address] = -3; // No response
+        }
+      } else {
+        SerialPrintln(" - Unknown device type");
+      }
+    } else if (error == 2) {
+      // NACK on address - device not found (normal for unused addresses)
+      // Don't log this to reduce noise
+    } else if (error == 4) {
+      SerialPrint("⚠ Unknown I2C error at address ");
+      SerialPrintln(address);
+    }
+    
+    yield();
+    delay(10);
+  }
+  
+  // Summary report
+  SerialPrintln("");
+  SerialPrintln("--- Scan Summary ---");
+  SerialPrint("Total devices found: ");
+  SerialPrintln(foundCount);
+  SerialPrint("Expected units: ");
+  SerialPrintln(UNITS_AMOUNT);
+  SerialPrintln("");
+  
+  // Report which units are connected vs missing
+  SerialPrintln("Unit Status:");
+  bool allUnitsFound = true;
+  for (int i = 0; i < UNITS_AMOUNT; i++) {
+    SerialPrint("  Unit ");
+    SerialPrint(i);
+    SerialPrint(" (address ");
+    SerialPrint(i);
+    SerialPrint("): ");
+    
+    if (foundUnits[i]) {
+      SerialPrint("✓ CONNECTED");
+      if (unitStatus[i] == 0) {
+        SerialPrintln(" - Ready");
+      } else if (unitStatus[i] == 1) {
+        SerialPrintln(" - Busy");
+      } else if (unitStatus[i] == -1) {
+        SerialPrintln(" - Sleeping");
+      } else if (unitStatus[i] == -3) {
+        SerialPrintln(" - No status response");
+      } else {
+        SerialPrint(" - Status code: ");
+        SerialPrintln(unitStatus[i]);
+      }
+    } else {
+      SerialPrintln("✗ MISSING (not responding on I2C)");
+      allUnitsFound = false;
+    }
+  }
+  
+  // Report any extra devices found at addresses beyond expected units
+  if (foundCount > UNITS_AMOUNT) {
+    SerialPrintln("");
+    SerialPrintln("Additional devices found (beyond expected units):");
+    for (int i = UNITS_AMOUNT; i < 16; i++) {
+      if (foundUnits[i]) {
+        SerialPrint("  Address ");
+        SerialPrint(i);
+        SerialPrintln(" - Unknown device");
+      }
+    }
+  }
+  
+  SerialPrintln("");
+  if (allUnitsFound) {
+    SerialPrintln("✓ All expected units are connected!");
+  } else {
+    SerialPrint("⚠ WARNING: Some units are missing! Check:");
+    SerialPrintln("");
+    SerialPrintln("  1. DIP switch settings on missing units");
+    SerialPrintln("  2. I2C wiring (SDA/SCL connections)");
+    SerialPrintln("  3. Power connections to missing units");
+    SerialPrintln("  4. Unit firmware (verify address is correct)");
+  }
+  
+  SerialPrintln("========================================");
 }
 
 //Gets all the currently stored calues from memory in a JSON object
