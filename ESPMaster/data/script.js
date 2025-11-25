@@ -751,6 +751,21 @@ function copyDebugLog() {
 	document.body.removeChild(textArea);
 }
 
+// Toggle serial log visibility
+function toggleSerialLog() {
+	var container = document.getElementById("containerSerialLog");
+	var button = document.getElementById("btnToggleSerialLog");
+	
+	if (container.style.display === "none") {
+		container.style.display = "block";
+		if (button) button.textContent = "Hide";
+		refreshLog(); // Refresh when showing
+	} else {
+		container.style.display = "none";
+		if (button) button.textContent = "Show";
+	}
+}
+
 // Copy full serial log to clipboard
 function copySerialLog() {
 	if (!fullSerialLogData || !fullSerialLogData.logs || fullSerialLogData.logs.length === 0) {

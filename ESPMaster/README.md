@@ -45,8 +45,12 @@ Added LED blink codes on GPIO 2 (configurable) to indicate system status:
 - Added `DEBUG:` status messages throughout setup
 - Debug status string tracks current initialization phase
 - More verbose logging for troubleshooting
-- Startup progress (the same text that normally appears over serial) is now published to a lightweight `/debug-log` web page during boot so you can see the initialization phases before the UI loads.
-- After the UI loads, the most recent debug lines stream into the "Debug Log" viewer at the bottom of the main web interface, making it easy to spot failures without opening the serial console.
+- **Debug Mode** (`DEBUG_ENABLE`): When enabled, provides comprehensive debugging features:
+  - **Startup Debug Page**: Shows initialization log during boot (accessible before main UI loads)
+  - **Error Status Panel**: Displays JavaScript errors, network errors, and page load issues at the top of the main page
+  - **Page Load Debug Log**: Shows debug messages during page initialization (collapsible viewer)
+  - **Serial Debug Log**: Real-time serial output at the bottom of the main page with hide/show toggle
+- All debug features can be enabled/disabled via `/enable-debug-mode` and `/exit-debug-mode` endpoints
 
 ### 5. WiFi Strength Indicator
 - `getCurrentSettingValues()` now samples RSSI multiple times and returns both the raw dBm value and connection state.
