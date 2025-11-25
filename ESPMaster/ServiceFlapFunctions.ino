@@ -27,8 +27,13 @@ void showText(String message, int delayMillis) {
         showMessage(line, convertSpeed(flapSpeed));
     
         //If the lines index isn't the last, delay showing the next message to give time to read
+        // Use non-blocking delay with yield to allow web server to process
         if (linesIndex <= messageLines.size()) {
-          delay(3000);
+          unsigned long delayStart = millis();
+          while (millis() - delayStart < 3000) {
+            yield(); // Allow web server to process requests
+            delay(100);
+          }
         }
       }  
     }
@@ -39,9 +44,14 @@ void showText(String message, int delayMillis) {
     }  
 
     //If the device wasn't previously in text mode, delay for a short time so can read!
+    // Use non-blocking delay with yield
     if (delayMillis != 0) {
       SerialPrintln("Pausing for a small duration. Delay: " + String(delayMillis));
-      delay(delayMillis);
+      unsigned long delayStart = millis();
+      while (millis() - delayStart < delayMillis) {
+        yield(); // Allow web server to process requests
+        delay(100);
+      }
     }
 
     //Save what we last did
@@ -73,13 +83,24 @@ void showMessage(String message, int flapSpeed) {
 
 #if UNIT_CALLS_DISABLE == true
   SerialPrintln("Unit Calls are disabled for debugging. Will delay to simulate calls...");
-  delay(2000);
+  unsigned long delayStart = millis();
+  while (millis() - delayStart < 2000) {
+    yield();
+    delay(100);
+  }
 #else
-  //Wait while display is still moving
+  //Wait while display is still moving - ADD YIELD TO PREVENT HANGING
   SerialPrintln("Unit calls are enabled. Will display message");
-  while (isDisplayMoving()) {
+  unsigned long waitStart = millis();
+  unsigned long waitTimeout = 30000; // 30 second timeout to prevent infinite hang
+  while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
     SerialPrintln("Waiting for display to stop");
+    yield(); // CRITICAL: Allow web server to process requests
     delay(500);
+  }
+  
+  if (millis() - waitStart >= waitTimeout) {
+    SerialPrintln("WARNING: Display wait timeout - continuing anyway");
   }
 
   for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
@@ -97,12 +118,22 @@ void showMessage(String message, int flapSpeed) {
     if (currentLetterPosition != -1) {
       writeToUnit(unitIndex, currentLetterPosition, flapSpeed);
     }
+    
+    // Small yield between units to keep web server responsive
+    yield();
   }
 
-  //Wait for the display to stop moving before exit
-  while (isDisplayMoving()) {
+  //Wait for the display to stop moving before exit - ADD YIELD TO PREVENT HANGING
+  waitStart = millis();
+  waitTimeout = 30000; // 30 second timeout
+  while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
     SerialPrintln("Waiting for display to stop now message is display");
+    yield(); // CRITICAL: Allow web server to process requests
     delay(100);
+  }
+  
+  if (millis() - waitStart >= waitTimeout) {
+    SerialPrintln("WARNING: Display wait timeout - continuing anyway");
   }
 #endif
 }
@@ -172,3 +203,4 @@ int checkIfMoving(int address) {
   
   return active;
 }
+
