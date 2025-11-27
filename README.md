@@ -1,238 +1,55 @@
-# Split-Flap
-
-[![Build ESP Master Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-esp-master.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-esp-master.yml) [![Build EEPROM Write Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-eeprom-write.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-eeprom-write.yml) [![Build Arduino Unit Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-unit.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-unit.yml)
-
-![Split Flap Display](./Images/Split-Flap.jpg)
-
-This project has been forked from the brilliant [Split Flap Project](https://github.com/Dave19171/split-flap) by [David Königsmann](https://github.com/Dave19171). None of this would have been possible without the great foundations that have been put in place.
-
-This project has built on the original project to add extra features such as:
-
-- Message Splittng
-  - If a message is longer then the number of units there are, the message will be split up and displayed in sequence with a delay between each message
-  - Also messages can be split up by adding a `\n`
-- Countdown Mode
-  - Countdown in days to a specified date
-- Added ability to setup WiFi connection on device
-  - The device will set itself up as a Access Point (AP) on first start. You will be able to connect to this network and a web portal will be provided where you can setup the WiFi network you want to connect to
-  - If the device was to lose connection, it should retry and if all else fails, it will open up the web portal again to change the WiFi settings if necessary
-  - Option to be able use direct mode is also possible as previously implemented
-- Reworked UI
-  - Can see messages scheduled to be displayed and option to remove them
-  - Loading indicators
-  - Show hide information to fill out for the mode you select
-  - See extra information on the UI such as:
-    - Last Message Received
-    - Number of Flaps registered
-    - Version Number running
-    - How many characters/lines are in the textbox for text
-    - Add newline button (as typing `\n` is a pain on a mobile keyboard)
-- Message Scheduling
-  - Ability to send a message and display it at a later date.
-  - Options for when a scheduled message being shown
-    - If the clock was in another mode, such as `Clock` mode, it will show the message for a duration (changable via updating `scheduledMessageDisplayTimeMillis` in `ESPMaster.ino`), then return to that mode afterwards
-    - A checkbox on the UI is presented ("Show Indefinitely") that when checked, will show a message and leave it on the display
-- Arduino OTA
-  - Over the Air updates to the display
-- Updated `README.md` to add scenarios of problems encountered
-
-Also the code has been refactored to try facilitate easier development:
-
-- Changed serial prints to one central location so don't have to declare serial enable checks when a new one is required
-- Renamed files and functions
-- Ping endpoint
-- Updated `data` so can test out project locally without having to call a webserver via a `localDevelopment` flag
-
-3D-files here on [Printables](https://www.prusaprinters.org/prints/69464-split-flap-display)!
-
-## General
-
-The display's electronics use 1 x ESP01 (ESP8266) as the main hub and up to 16 Arduinos as receivers. The ESP handles the web interface and communicates to the units via I2C. Each unit is resposible for setting the zero position of the drum on startup and displaying any letter the main hub send its way.
-
-Assemble everything according to the instruction manual which you can find on [GitHub](./Instructions/SplitFlapInstructions.pdf).
-
-### PCB
-
-Gerber files are in the `PCB` folder. These are the scehematics for the PCB boards and say, what is needed and where. You need one per unit. Populate components according to the [instruction manual](./Instructions/SplitFlapInstructions.pdf).
-
-Options to potentially get boards created for you:
-
-- [PCB Way](https://www.pcbway.com/)
-- [JLC PCB](https://jlcpcb.com/)
-
-> Note: Services are offered by these companies to assembly the boards for you. There are surface mounted components to these devices that you might not be able to do yourself like small resistors for instance, which must be flow soldered. It could be worth having the company do this aspect for you.
-
-### Unit
-
-Each split-flap unit consists of an Arduino Nano mounted on a custom PCB. It controls a 28BYJ-48 stepper motor via a ULN2003 driver chip. The drum with the flaps is homed with a KY003 hall sensor and a magnet mounted to the drum.
-
-Upload the Arduino sketch `Unit.ino` in the unit folder to each unit's arduino nano. Before that set the offset with the `EEPROM_Write_Offset.ino` sketch.
-
-Inside `Unit.ino`, there is a setting for testing the units so that a few letters are cycled through to ensure what is shown is what you expect. At the top of the file once you have opened the project, you will find a line that is commented out:
-
-```c++
-#define SERIAL_ENABLE   // uncomment for serial debug communication
-#define TEST_ENABLE    	// uncomment for test mode where the unit will cycle a series of test letters.
-```
-
-> Note: If you experience any problems uploading the unit sketch, you may have to change your `Processor` to use the old bootloader, called `ATmega328p (Old Bootloader)`.
-
-Remove the comment characters to help with your testing for the next step of Setting the Zero Position Offset.
-
-#### Set Zero Position Offset
-
-The zero position (or blank flaps position in this case) is attained by driving the stepper to the hall sensor and step a few steps forward. This offset is individual to every unit and needs to be saved to the arduino nano's EEPROM.
-
-A simple sketch has been written to set the offset. Upload the `EEPROM_Write_Offset.ino` sketch and open the serial monitor with 115200 baudrate. It will tell you the current offset and you can enter a new offset. It should be around 100 but yours may vary. You may need to upload the `Unit.ino` sketch with the `TEST_ENABLE` flag uncommented and see if the offset is correct. Repeat until the blank flap is showing every time the unit homes.
-
-#### Set Unit Address
-
-Every unit's address is set by a DIP switch. They need to be set ascending from zero in binary.
-
-**DIP Switch Configuration:**
-- The DIP switch has 4 switches (SW1, SW2, SW3, SW4) from left to right
-- **SW1** (leftmost) = bit 3 (value 8)
-- **SW2** = bit 2 (value 4)
-- **SW3** = bit 1 (value 2)
-- **SW4** (rightmost) = bit 0 (value 1)
-- **Switch ON (up position)** = 1 in binary
-- **Switch OFF (down position)** = 0 in binary
-- Address = SW4×1 + SW3×2 + SW2×4 + SW1×8
-
-**Visual Guide for 3 Units:**
-```
-Unit 1 (Address 0):  [DOWN] [DOWN] [DOWN] [DOWN]  = 0000
-Unit 2 (Address 1):  [DOWN] [DOWN] [DOWN] [UP]    = 0001
-Unit 3 (Address 2):  [DOWN] [DOWN] [UP] [DOWN]     = 0010
-```
-
-**Complete Table for up to 10 Units:**
-| Unit | I2C Address | SW1 (left) | SW2 | SW3 | SW4 (right) | Binary | Notes |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Unit 1 | 0 | OFF (down) | OFF (down) | OFF (down) | OFF (down) | 0000 | All switches down |
-| Unit 2 | 1 | OFF (down) | OFF (down) | OFF (down) | **ON (up)** | 0001 | Rightmost switch up |
-| Unit 3 | 2 | OFF (down) | OFF (down) | **ON (up)** | OFF (down) | 0010 | Second from right up |
-| Unit 4 | 3 | OFF (down) | OFF (down) | **ON (up)** | **ON (up)** | 0011 | Last two switches up |
-| Unit 5 | 4 | OFF (down) | **ON (up)** | OFF (down) | OFF (down) | 0100 | Second from left up |
-| Unit 6 | 5 | OFF (down) | **ON (up)** | OFF (down) | **ON (up)** | 0101 | |
-| Unit 7 | 6 | OFF (down) | **ON (up)** | **ON (up)** | OFF (down) | 0110 | |
-| Unit 8 | 7 | OFF (down) | **ON (up)** | **ON (up)** | **ON (up)** | 0111 | |
-| Unit 9 | 8 | **ON (up)** | OFF (down) | OFF (down) | OFF (down) | 1000 | Leftmost switch up |
-| Unit 10 | 9 | **ON (up)** | OFF (down) | OFF (down) | **ON (up)** | 1001 | |
-
-**Important Notes:**
-- Each unit must have a **unique address** (0, 1, 2, 3, etc.)
-- Addresses must be **sequential starting from 0**
-- If you have 3 units, use addresses 0, 1, and 2
-- The ESPMaster code expects units to be numbered 0 through (UNITS_AMOUNT - 1)
-- After setting switches, power cycle the unit for the new address to take effect
-- You can verify addresses using the I2C scan feature (see ESPMaster README for diagnostic tools)
-
-### ESP01/ESP8266
-
-#### Pre-requisites
-
-To upload the sketch to the ESP you need to install a few things to your arduino IDE.
-
-- Install the ESP8266 board to your Arduino IDE. You can follow [this tutorial](https://randomnerdtutorials.com/how-to-install-esp8266-board-arduino-ide/)
-- Install the arduino ESP8266 littleFS plugin to use the file system of the ESP, you can follow [this tutorial](https://randomnerdtutorials.com/install-esp8266-nodemcu-littlefs-arduino/)
-- Install the following libraries via Library Manager:
-  - [ArduinoJSON](https://github.com/bblanchon/ArduinoJson) - Version: 7.0.4
-  - [ESPAsyncWebSrv](https://github.com/dvarrel/ESPAsyncWebSrv) - Version: 1.2.7
-    - Dependencies which should be installed automatically:
-      - [ESPAsyncTCP](https://github.com/dvarrel/ESPAsyncTCP)
-      - [AsyncTCP](https://github.com/dvarrel/AsyncTCP)
-  - [NTPClient](https://github.com/arduino-libraries/NTPClient) - Version: 3.2.1
-  - [ezTime](https://github.com/ropg/ezTime) - Version: 0.8.3
-  - [LinkedList](https://github.com/ivanseidel/LinkedList) - Version: 1.3.3
-  - [WiFiManager](https://github.com/tzapu/WiFiManager) - Version: 2.0.17
-
-To upload sketches to the ESP8266 you can either use an [Arduino Uno](https://create.arduino.cc/projecthub/pratikdesai/how-to-program-esp8266-esp-01-module-with-arduino-uno-598166) or you can buy a dedicated programmer. It is highly recommend getting a programmer as it makes uploading programs onto the ESP8266 much faster.
-
-> Note: Be wary of ESP8266 programmers that are available which allow USB connection to your PC which may not have programming abilities. Typically extra switches are available so that the ESP8266 can be put in programming mode, although you can modify the programmer through a simple solder job to allow it to enter programming mode. Examples can be found in the customer reviews of [Amazon](https://www.amazon.co.uk/gp/product/B078J7LDLY/ref=ppx_yo_dt_b_search_asin_title?ie=UTF8&th=1).
-
-> Alternatively, you can get a dedicated programmer from Amazon such as [this one](https://www.amazon.co.uk/dp/B083QHJW21). This is also available on [AliExpress](https://www.aliexpress.com/item/1005001793822720.html?spm=a2g0o.detail.0.0.48622aefV0Zv89&mp=1) if you are willing to wait a while for it.
-
-#### Uploading the Static Assets via LittleFS
-
-There are static files located [here](./ESPMaster/data/) in the `data` folder of ESPMaster which will need to be uploaded. These make up the website that will be accessible on your WiFi so you can update the Split-Flap display.
-
-Open the sketch `ESPMaster.ino` in the `ESPMaster` folder, change your board to "Generic ESP8266 Module", choose the correct COM-port and click:
-
-> Tools -> ESP8266 LittleFS Data Upload
-
-This uploads the website onto the ESP8266's file system.
-
-**NOTE:** No sketch has been uploaded yet! Only the static files. At the time of writing, this will also only work on an older version of Arduino IDE < version 2. The latest Arduino IDE broke support for Plugins such as the LittleFS plugin.
-
-#### Updating Settings of the Sketch
-
-There are several options in the Sketch you can modify to customise or change the behaviour of the display. These are marked in the code as "Configurable".
-
-By default, the system will run in an "Access Point" mode where you will be able to connect to the display and put in WiFi credentials directly. This means if you WiFi changes, you don't have to re-upload a new sketch. Screenshot of the WiFi setup portal:
-
-![Screenshot WiFi Portal](./Images/Access-Point-Screenshot.jpg)
-
-Alternatively, you can specify credentials directly. You can go ahead and change the credentials in these variables:
-
-```c++
-const char* wifiDirectSsid = "";
-const char* wifiDirectPassword = "";
-```
-
-You will also need to change the WiFi Mode in the code via changing this variable to `true`:
-
-```c++
-//Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Default: false (puts device in AP mode)
-#define WIFI_USE_DIRECT false
-```
-
-You will also want to change the `timezoneString` to your time zone. You can find the TZ database names here: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-
-You can also modify the date and clock format easily by using this table: https://github.com/ropg/ezTime#datetime
-
-There are several helper `define` variables to help during debugging/running:
-
-- **SERIAL_ENABLE**
-  - Use this to enable Serial output lines for tracking executing code
-- **OTA_ENABLE**
-  - Use this to enable OTA updates from the Arduino IDE
-  - Subsequently, you can set a password for OTA via the `otaPassword` variable
-- **UNIT_CALLS_DISABLE**
-  - Use this to disable the communication with the Arduino Nano Units. This will mean you can check code over function for the ESP module.
-
-#### Experiments
-
-In the main Sketch under "Configurable Defines", an "EXPERIMENTAL" section has been included. This section has been created for features that are things that can be changed and trialled however aren't going to be necessary to be changed for general use.
-
-##### Static IP Address
-
-A feature request of being able to set a Static IP Address was created by [beroliv](https://github.com/beroliv) (thank you for the suggestion). This was to get around issues whereby in some routers, there was issues in being able to do this.
-
-Code has been added to be able to set a Static IP Address on device. To do this:
-
-1. Set the `WIFI_STATIC_IP` variable to `true` (defaulted to `false`)
-2. Update the following settings as necessary for your needs:
-
-   ```c++
-   IPAddress wifiDeviceStaticIp(192, 168, 1, 100);
-
-   IPAddress wifiRouterGateway(192, 168, 1, 1);
-   IPAddress wifiSubnet(255, 255, 0, 0);
-
-   IPAddress wifiPrimaryDns(8, 8, 8, 8);
-   ```
-
-**Suggestion:** Set your device up with a Static IP via your router if possible and to avoid conflicts on your network, however feel free to run this code if you are not able to. Testing this functionality showed it does work in both AP/Direct WiFi modes.
-
-#### Sketch Upload
-
-So far we've only uploaded static files to the ESP8266. You now need to `Upload` the sketch to the ESP8266. Click on Upload and the ESP8266 will be upadted with the sketch and you are done. Stick the ESP8266 onto the first unit's PCB and navigate to the IP-address the ESP8266 is getting assigned from your router.
-
-### Common Problems
-
-- If the ESP is not talking to the units correctly, check the `UNITSAMOUNT` in the `ESPMaster.ino`. The amount of units connected has to match.
-- Ensure you upload the sketch and the LittleFS sketch upload to the ESP8266.
-- When the system is powered, your Hall Sensor should only light up when a magnet is nearby.
-- Ensure you are running an older version of Arduino IDE to be able to upload static files to the device. You will need a version prior to version 2.x.
-- User [@beroliv](https://github.com/beroliv) has reported having issues with WiFi connections. One solution they have proposed is soldering a wire to the antenna to be able to extend its range by creating an antenna. Here is the [link](https://www.stall.biz/project/verbesserte-wlan-konnektivitaet-mit-externen-antennen-fuer-wiffi-weatherman-und-andere-module-mit-esp8266/) (in German but Google Translate does a good job for other languages) they provided to detail the solution. Please take care when carrying out this solution. Thank you for the information [@beroliv](https://github.com/beroliv)!
+-# Split-Flap
++# Split-Flap
++
+([![Build ESP Master Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-esp-master.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-esp-master.yml) [![Build EEPROM Write Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-eeprom-write.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-eeprom-write.yml) [![Build Arduino Unit Sketch](https://github.com/JonnyBooker/split-flap/actions/workflows/build-unit.yml/badge.svg)](https://github.com/JonnyBooker/split-flap/actions/workflows/build-unit.yml) )
++
++![Split Flap Display](./Images/Split-Flap.jpg)
++
++This fork builds on the brilliant [original project](https://github.com/Dave19171/split-flap) by
++[David Königsmann](https://github.com/Dave19171) and adds a modern web UI, OTA updates,
++message scheduling, a WiFi setup portal, diagnostics and numerous firmware
++improvements while keeping the 3D-printable mechanical design.
++
++## Feature Highlights
++
++- Multi-mode web UI (text, countdown, date, clock) with scheduling and OTA
++- Non-blocking ESPMaster firmware that keeps HTTP requests responsive
++- Built-in WiFi setup portal (AP mode) plus optional static IP/direct mode
++- LED error indicator (ESP-01S), page-load debug logs and copyable serial logs
++- Message splitting for long strings, newline support and REST endpoints
++
++## Documentation
++
++All project documentation now lives under [`docs/`](./docs). Start here:
++
++| Topic | Description |
++| --- | --- |
++| [`docs/README.md`](./docs/README.md) | Docs hub + quick start |
++| [`docs/printing.md`](./docs/printing.md) | BOM, screw list, printed parts, flap tips |
++| [`docs/hardware-build.md`](./docs/hardware-build.md) | PCB soldering, unit assembly, enclosure |
++| [`docs/software.md`](./docs/software.md) | Firmware setup, calibration, debugging, usage |
++| [`docs/SplitFlapInstructions.md`](./docs/SplitFlapInstructions.md) | Legacy PDF converted to Markdown |
++
++## Repository Structure
++
++```
++.
++├── docs/                 # Documentation hub
++├── ESPMaster/            # ESP-01S firmware + web assets
++├── Unit/                 # Arduino Nano unit firmware
++├── EEPROM_Write_Offset/  # Utility sketch for per-unit offsets
++├── PCB/                  # Schematics, Gerbers, pick-and-place
++├── Images/               # Reference photos used in docs
++└── Instructions/         # Original PDF (kept for reference)
++```
++
++## Getting Started
++
++1. Review [`docs/printing.md`](./docs/printing.md) to print and source parts
++2. Follow [`docs/hardware-build.md`](./docs/hardware-build.md) to assemble the
++   PCBs, units and enclosure
++3. Configure firmware, calibrate offsets and explore the web UI using
++   [`docs/software.md`](./docs/software.md)
++
++Have improvements or fixes? Contributions are welcome—open an issue or a pull
++request and help the display flip even better!

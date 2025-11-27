@@ -28,11 +28,13 @@
 #define SERIAL_ENABLE       false   //Option to enable serial debug messages
 #define UNIT_CALLS_DISABLE  false   //Option to disable the call to the units so can just debug the ESP with no connections
 #define OTA_ENABLE          false    //Option to enable OTA functionality
-#define UNITS_AMOUNT        3      //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
-#define SERIAL_BAUDRATE     115200  //Serial debugging BAUD rate
+#define UNITS_AMOUNT        4       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
+#define SERIAL_BAUDRATE     57600  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
-#define LED_ENABLE          true   //Option to enable LED debug blink codes (set to false if not using LED)
-#define DEBUG_ENABLE true  //Enable debug features: startup debug page, error status panel, page load debug log, and serial debug log at bottom of page
+#define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
+#define DEBUG_ENABLE true  //Enable debug features: startup debug page, error status panel, and serial debug log at bottom of page
+#define PAGE_LOAD_DEBUG_ENABLE false  //Enable page load debug blocks: browser errors panel and page load debug log at top of page (set to true for troubleshooting page loading issues)
+#define SHOW_UNIT_NUMBERS_ON_STARTUP false  //Display each unit's number (0, 1, 2, etc.) for 1 second on bootup to help identify units
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices
@@ -41,92 +43,20 @@
 #define WIFI_STATIC_IP      true
 //#define FAE_MOD                   //Option for the modified PCB that includes an ESP-12F module
 
-/*
-  ============================================================================
-  ESP01 PINOUT DIAGRAM (2 rows x 4 pins)
-  ============================================================================
-  
-  ESP01 has 8 pins arranged in 2 rows of 4 pins. Looking at the module with
-  the antenna at the top:
-  
-         [Antenna]
-            |
-      ┌─────┴─────┐
-      │   ESP01   │
-      └─────┬─────┘
-            |
-  
-  Pin Layout (2 rows x 4 pins):
-  
-  TOP ROW (left to right):
-  ┌─────────┬─────────┬─────────┬─────────┐
-  │ Pin 1   │ Pin 2   │ Pin 3   │ Pin 4   │
-  │  GND    │ GPIO 2  │ GPIO 0  │GPIO 1/TX│
-  └─────────┴─────────┴─────────┴─────────┘
-  
-  BOTTOM ROW (left to right):
-  ┌─────────┬─────────┬─────────┬─────────┐
-  │ Pin 5   │ Pin 6   │ Pin 7   │ Pin 8   │
-  │ CH_PD   │  RST    │  VCC    │GPIO 3/RX│
-  └─────────┴─────────┴─────────┴─────────┘
-  
-  Detailed Pin Function Table:
-  ┌─────────┬──────────────┬─────────────────────────────────────────────┐
-  │ Pin #   │ Pin Name     │ Function / Notes                            │
-  ├─────────┼──────────────┼─────────────────────────────────────────────┤
-  │ 1       │ GND         │ Ground reference (0V)                        │
-  │ 2       │ GPIO 2      │ Available for external LED (this code)       │
-  │ 3       │ GPIO 0      │ Boot mode pin (LOW = flash/programming mode)│
-  │ 4       │ GPIO 1 / TX │ Serial TX / Built-in blue LED / I2C SDA      │
-  │         │             │   (Used for I2C in this code: Wire.begin)   │
-  │ 5       │ CH_PD       │ Chip enable (must be HIGH, connect to 3.3V) │
-  │         │             │   Typically via 10kΩ pull-up resistor        │
-  │ 6       │ RST         │ Reset (LOW = reset, HIGH = normal operation)│
-  │         │             │   Typically via 10kΩ pull-up resistor       │
-  │ 7       │ VCC         │ Power input (3.3V ONLY, NOT 5V!)            │
-  │         │             │   ⚠️ WARNING: 5V will damage the module!    │
-  │ 8       │ GPIO 3 / RX │ Serial RX / I2C SCL                         │
-  │         │             │   (Used for I2C in this code: Wire.begin)   │
-  └─────────┴──────────────┴─────────────────────────────────────────────┘
-  
-  Important Notes:
-  - VCC must be 3.3V (NOT 5V - will damage the module!)
-  - GPIO 0 must be HIGH during normal operation (LOW = programming mode)
-  - CH_PD must be HIGH (connect to 3.3V, typically via 10kΩ resistor)
-  - RST must be HIGH (connect to 3.3V, typically via 10kΩ resistor)
-  - GPIO 1 has built-in blue LED (active LOW) but is used for I2C in this code
-  - GPIO 2 is available for external LED connection
-  - GPIO 1 and GPIO 3 are used for I2C communication (Wire.begin(1, 3))
-  
-  ============================================================================
-*/
-
-// LED Debug Pin Configuration for ESP01
-// Since GPIO 1 is used for I2C (Wire.begin(1, 3)), we use GPIO 2 for LED
-// You need to connect an external LED: LED anode -> GPIO 2, LED cathode -> GND
-// Use a 220-470 ohm resistor in series with the LED
-//
-// Alternative: If not using I2C, change to GPIO 1 to use built-in blue LED
-#define LED_DEBUG_PIN 2  // GPIO 2 = external LED (GPIO 1 is used for I2C)
-#define LED_ON HIGH      // External LED: HIGH = ON (opposite of built-in LED)
-#define LED_OFF LOW
+// LED Debug Pin Configuration for ESP-01S
+// ESP-01S has an onboard blue LED on GPIO 2 (not on TX/RX lines), which is active LOW.
+// This allows the LED to be used for error indication while keeping TX/RX lines
+// dedicated to I2C communication with the split-flap units.
+// Note: This feature only works with ESP-01S. The original ESP-01 has its LED on GPIO 1 (TX),
+// which conflicts with I2C communication, so this LED feature is not supported on ESP-01.
+#define LED_DEBUG_PIN 2  // GPIO 2 = onboard blue LED on ESP-01S
+#define LED_ON LOW       // ESP-01S onboard LED is active LOW
+#define LED_OFF HIGH
 
 /*
-  LED BLINK CODE REFERENCE:
-  The LED on GPIO 2 will blink to indicate system status during initialization:
-  
-  1 blink   = WiFi connecting
-  2 blinks  = WiFi connected successfully
-  3 blinks  = NTP time synchronization starting
-  4 blinks  = NTP sync successful
-  5 blinks  = NTP sync failed or timed out
-  6 blinks  = File system initialization
-  7 blinks  = Web server starting
-  8 blinks  = Web server ready - system operational
-  Continuous = Error detected (WiFi connection failed, etc.)
-  
-  These codes help identify where the system is during startup and can aid in
-  troubleshooting initialization issues.
+  LED ERROR INDICATION:
+  The LED will continuously blink when an error is detected (e.g., WiFi connection failed).
+  This provides a simple visual indicator for critical errors.
 */
 
 /* .--------------------------------------------------------. */
@@ -234,11 +164,12 @@ IPAddress wifiPrimaryDns(8, 8, 8, 8);
   behave a little strange.
 */
 //The current version of code to display on the UI
-const char* espVersion = "2.3.0-Scott";
+const char* espVersion = "3.0.0";
 
 //All the letters on the units that we have to be displayed. You can change these if it so pleases at your own risk
 const char letters[] = {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '$', '&', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '.', '-', '?', '!'};
 int displayState[UNITS_AMOUNT];
+int connectedUnitCount = 0; // Number of units actually detected on I2C bus
 unsigned long previousMillis = 0;
 
 //Search for parameter in HTTP POST request
@@ -342,29 +273,36 @@ void addToSerialLog(String message) {
 /* |                                         |_|   | */
 /* '-----------------------------------------------' */
 
-// LED Blink Code Functions
-// See header section for complete blink code reference
+// LED Error Indication Functions
+// Simple continuous blink pattern to indicate errors
 
 void ledOn() {
-#if LED_ENABLE == true
+#if ESP01S_LED_ENABLE == true
   digitalWrite(LED_DEBUG_PIN, LED_ON);
 #endif
 }
 
 void ledOff() {
-#if LED_ENABLE == true
+#if ESP01S_LED_ENABLE == true
   digitalWrite(LED_DEBUG_PIN, LED_OFF);
 #endif
 }
 
-void blinkLed(int count, int onTime, int offTime) {
-#if LED_ENABLE == true
-  for (int i = 0; i < count; i++) {
-    ledOn();
-    delay(onTime);
-    ledOff();
-    if (i < count - 1) delay(offTime);
+void continuousBlink(int duration) {
+#if ESP01S_LED_ENABLE == true
+  // Blink continuously for the specified duration (in milliseconds)
+  unsigned long startTime = millis();
+  bool ledState = false;
+  while ((millis() - startTime) < duration) {
+    if (ledState) {
+      ledOn();
+    } else {
+      ledOff();
+    }
+    ledState = !ledState;
+    delay(100); // 100ms on, 100ms off = 5 Hz blink rate
   }
+  ledOff(); // Ensure LED is off when done
 #endif
 }
 
@@ -385,11 +323,10 @@ void setup() {
   Wire.begin(4, 5);
 #endif
 
-  // Initialize LED for debugging
-#if LED_ENABLE == true
+  // Initialize LED for error indication
+#if ESP01S_LED_ENABLE == true
   pinMode(LED_DEBUG_PIN, OUTPUT);
   ledOff();
-  blinkLed(1, 100, 50); // Quick blink to show startup
 #endif
 
   // I2C bus scan on startup
@@ -409,21 +346,18 @@ void setup() {
   //Load and read all the things
   debugStatus = "WiFi Init";
   SerialPrintln("DEBUG: Status = " + debugStatus);
-  blinkLed(1, 200, 100); // 1 blink = WiFi connecting
   initWiFi();
   
   //Helpful if want to force reset WiFi settings for testing
   //wifiManager.resetSettings();
 
   if (isWifiConfigured && !isPendingReboot) {
-    blinkLed(2, 200, 100); // 2 blinks = WiFi connected
     debugStatus = "WiFi Connected";
     SerialPrintln("DEBUG: Status = " + debugStatus);
     
     //ezTime initialization - NON-BLOCKING with timeout
     debugStatus = "NTP Sync Starting";
     SerialPrintln("DEBUG: Status = " + debugStatus);
-    blinkLed(3, 200, 100); // 3 blinks = NTP syncing
     
     // Set sync interval but don't block
     setInterval(60); // Sync every 60 seconds
@@ -443,12 +377,10 @@ void setup() {
     }
     
     if (timeStatus() == timeSet) {
-      blinkLed(4, 200, 100); // 4 blinks = NTP sync success
       debugStatus = "NTP Sync Success";
       SerialPrintln("DEBUG: Status = " + debugStatus);
       SerialPrintln("DEBUG: NTP sync successful!");
     } else {
-      blinkLed(5, 200, 100); // 5 blinks = NTP sync failed
       debugStatus = "NTP Sync Failed";
       SerialPrintln("DEBUG: Status = " + debugStatus);
       SerialPrintln("DEBUG: WARNING - NTP sync failed or timed out, continuing anyway");
@@ -460,7 +392,6 @@ void setup() {
     //Load various variables
     debugStatus = "File System Init";
     SerialPrintln("DEBUG: Status = " + debugStatus);
-    blinkLed(6, 200, 100); // 6 blinks = File system init
     initialiseFileSystem();
     loadValuesFromFileSystem();
     
@@ -478,7 +409,6 @@ void setup() {
     //Web Server Endpoint configuration
     debugStatus = "Web Server Setup";
     SerialPrintln("DEBUG: Status = " + debugStatus);
-    blinkLed(7, 200, 100); // 7 blinks = Web server starting
     
     webServer.serveStatic("/", LittleFS, "/");
     webServer.on("/", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -595,6 +525,7 @@ void setup() {
       JsonDocument minimalDoc;
       minimalDoc["timezoneOffset"] = timezone.getOffset();
       minimalDoc["unitCount"] = UNITS_AMOUNT;
+      minimalDoc["connectedUnitCount"] = connectedUnitCount;
       minimalDoc["alignment"] = alignment;
       minimalDoc["flapSpeed"] = flapSpeed;
       minimalDoc["deviceMode"] = deviceMode;
@@ -725,6 +656,211 @@ void setup() {
       
       doc["foundCount"] = foundCount;
       doc["expectedCount"] = UNITS_AMOUNT;
+      
+      String jsonString;
+      serializeJson(doc, jsonString);
+      request->send(200, "application/json", jsonString);
+    });
+    
+    // Detailed unit status endpoint - check a specific unit multiple times
+    webServer.on("/unit-status", HTTP_GET, [](AsyncWebServerRequest * request) {
+      int unitAddress = -1;
+      if (request->hasParam("unit")) {
+        unitAddress = request->getParam("unit")->value().toInt();
+      }
+      
+      if (unitAddress < 0 || unitAddress >= UNITS_AMOUNT) {
+        request->send(400, "application/json", "{\"error\":\"Invalid unit address. Use ?unit=0 to " + String(UNITS_AMOUNT - 1) + "\"}");
+        return;
+      }
+      
+      SerialPrint("DEBUG: Detailed status check requested for unit ");
+      SerialPrintln(unitAddress);
+      
+      JsonDocument doc;
+      doc["unit"] = unitAddress;
+      doc["checkTime"] = millis();
+      
+      // Check I2C connection first (quick check)
+      Wire.beginTransmission(unitAddress);
+      byte i2cError = Wire.endTransmission();
+      doc["i2cError"] = i2cError;
+      
+      if (i2cError == 0) {
+        doc["i2cConnected"] = true;
+        
+        // Check status fewer times (3 instead of 5) with shorter delays to avoid timeout
+        // Also add timeout protection for each check
+        int statusReadings[3];
+        unsigned long statusCheckStart = millis();
+        const unsigned long MAX_STATUS_CHECK_TIME = 5000; // 5 second max for all checks
+        
+        for (int i = 0; i < 3; i++) {
+          unsigned long checkStart = millis();
+          
+          // Try to read status with timeout protection
+          statusReadings[i] = -2; // Default to "no response"
+          
+          // Quick I2C request with minimal blocking
+          Wire.requestFrom(unitAddress, ANSWER_SIZE, 1);
+          
+          // Wait for response but with timeout
+          unsigned long waitStart = millis();
+          while (!Wire.available() && (millis() - waitStart < 500)) {
+            yield(); // Allow web server to process
+            delay(10);
+          }
+          
+          if (Wire.available()) {
+            statusReadings[i] = Wire.read();
+          } else {
+            // Timeout - unit not responding quickly
+            SerialPrint("WARNING: Unit ");
+            SerialPrint(unitAddress);
+            SerialPrintln(" status check timed out");
+            statusReadings[i] = -2; // No response
+          }
+          
+          // Check if we're taking too long overall
+          if (millis() - statusCheckStart > MAX_STATUS_CHECK_TIME) {
+            SerialPrintln("WARNING: Status check taking too long, stopping early");
+            // Fill remaining with -2 (no response)
+            for (int j = i + 1; j < 3; j++) {
+              statusReadings[j] = -2;
+            }
+            break;
+          }
+          
+          yield(); // Allow web server to process
+          if (i < 2) { // Don't delay after last reading
+            delay(100); // Reduced from 200ms to 100ms
+          }
+        }
+        
+        // Add readings to JSON
+        for (int i = 0; i < 3; i++) {
+          doc["statusReadings"][i] = statusReadings[i];
+        }
+        
+        // Analyze readings (ignore -2 "no response" values in analysis)
+        bool allSame = true;
+        int firstValidStatus = -3;
+        int validStatusCount = 0;
+        
+        for (int i = 0; i < 3; i++) {
+          if (statusReadings[i] != -2) { // -2 means no response/timeout
+            if (firstValidStatus == -3) {
+              firstValidStatus = statusReadings[i];
+            }
+            validStatusCount++;
+            if (statusReadings[i] != firstValidStatus) {
+              allSame = false;
+            }
+          }
+        }
+        
+        doc["allReadingsSame"] = allSame;
+        doc["validStatusCount"] = validStatusCount;
+        
+        if (validStatusCount == 0) {
+          doc["consistentStatus"] = -2;
+          doc["statusText"] = "no response";
+          doc["diagnosis"] = "Unit is not responding to I2C status requests. Unit may be stuck, sleeping, or having communication issues.";
+          doc["suggestedFix"] = "Check I2C wiring, power, and DIP switch settings. Try resetting the unit or power cycling.";
+        } else {
+          doc["consistentStatus"] = firstValidStatus;
+          
+          if (allSame && firstValidStatus == 1) {
+            doc["diagnosis"] = "Unit is stuck in BUSY/MOVING state. The motor may be physically stuck, Hall sensor not detecting home, or calibration failed.";
+            doc["suggestedFix"] = "Try 'Reset/Home Unit' button to force calibration. If that doesn't work, check: motor can rotate freely, Hall sensor wiring, magnet alignment, and calibration offset.";
+          } else if (allSame && firstValidStatus == -1) {
+            doc["diagnosis"] = "Unit is sleeping or not responding to I2C requests.";
+            doc["suggestedFix"] = "Unit should wake up automatically when sent a command. Try 'Reset/Home Unit' button.";
+          } else if (allSame && firstValidStatus == 0) {
+            doc["diagnosis"] = "Unit is ready and not moving.";
+          } else {
+            doc["diagnosis"] = "Unit status is inconsistent - may be transitioning between states or having communication issues.";
+          }
+          
+          // Status text
+          if (firstValidStatus == 0) {
+            doc["statusText"] = "ready";
+          } else if (firstValidStatus == 1) {
+            doc["statusText"] = "busy/moving";
+          } else if (firstValidStatus == -1) {
+            doc["statusText"] = "sleeping";
+          } else {
+            doc["statusText"] = "unknown";
+          }
+        }
+      } else {
+        doc["i2cConnected"] = false;
+        doc["diagnosis"] = "Unit not found on I2C bus. Check DIP switch settings, wiring, and power.";
+        if (i2cError == 2) {
+          doc["i2cErrorText"] = "Address NACK (device not found)";
+        } else if (i2cError == 3) {
+          doc["i2cErrorText"] = "Data NACK";
+        } else if (i2cError == 4) {
+          doc["i2cErrorText"] = "Unknown I2C error";
+        } else if (i2cError == 5) {
+          doc["i2cErrorText"] = "Timeout";
+        }
+      }
+      
+      String jsonString;
+      serializeJson(doc, jsonString);
+      request->send(200, "application/json", jsonString);
+    });
+    
+    // Force unit to home/calibrate by sending it to position 0
+    webServer.on("/unit-reset", HTTP_GET, [](AsyncWebServerRequest * request) {
+      int unitAddress = -1;
+      if (request->hasParam("unit")) {
+        unitAddress = request->getParam("unit")->value().toInt();
+      }
+      
+      if (unitAddress < 0 || unitAddress >= UNITS_AMOUNT) {
+        request->send(400, "application/json", "{\"error\":\"Invalid unit address. Use ?unit=0 to " + String(UNITS_AMOUNT - 1) + "\"}");
+        return;
+      }
+      
+      SerialPrint("DEBUG: Reset/home command requested for unit ");
+      SerialPrintln(unitAddress);
+      
+      // Check I2C connection first
+      Wire.beginTransmission(unitAddress);
+      byte i2cError = Wire.endTransmission();
+      
+      JsonDocument doc;
+      doc["unit"] = unitAddress;
+      doc["action"] = "reset";
+      
+      if (i2cError != 0) {
+        doc["error"] = "Unit not found on I2C bus";
+        doc["i2cError"] = i2cError;
+        String jsonString;
+        serializeJson(doc, jsonString);
+        request->send(200, "application/json", jsonString);
+        return;
+      }
+      
+      // Send unit to position 0 (space) with default speed
+      // This should trigger calibration if the unit needs a full rotation
+      writeToUnit(unitAddress, 0, 80); // Position 0 = space, speed 80
+      
+      // Verify the command was sent by checking I2C error
+      Wire.beginTransmission(unitAddress);
+      byte verifyError = Wire.endTransmission();
+      
+      if (verifyError == 0) {
+        doc["message"] = "Reset command sent successfully. Unit should now move to position 0 (space) and calibrate.";
+        doc["note"] = "This may take 10-30 seconds. Check unit status after a few seconds to see progress.";
+        doc["success"] = true;
+      } else {
+        doc["message"] = "Command sent but unit may not be responding properly.";
+        doc["i2cError"] = verifyError;
+        doc["success"] = false;
+      }
       
       String jsonString;
       serializeJson(doc, jsonString);
@@ -1060,7 +1196,115 @@ void setup() {
     delay(250);
     webServer.begin();
     
-    blinkLed(8, 200, 100); // 8 blinks = Web server ready
+#if SHOW_UNIT_NUMBERS_ON_STARTUP == true && UNIT_CALLS_DISABLE == false
+    // Display each unit's number on bootup to help identify units
+    SerialPrintln("DEBUG: Displaying unit numbers on startup...");
+    bool unitsSent = false;
+    for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
+      // Convert unit number to letter position: '0' is at index 30, '1' at 31, etc.
+      int digitPosition = 30 + unitIndex; // '0' = 30, '1' = 31, ..., '9' = 39
+      if (unitIndex <= 9) { // Only display if unit number is 0-9 (single digit)
+        SerialPrint("DEBUG: Sending unit ");
+        SerialPrint(unitIndex);
+        SerialPrintln(" to display its number");
+        writeToUnit(unitIndex, digitPosition, 10); // Use speed 10 for quick display
+        unitsSent = true;
+        yield(); // Allow web server to process
+        delay(50); // Small delay between units
+      }
+    }
+    
+    // Only wait if we actually sent commands to units
+    if (unitsSent) {
+      // Wait for units to finish displaying their numbers, then hold for 1 second
+      SerialPrintln("DEBUG: Waiting for units to display numbers...");
+      unsigned long waitStart = millis();
+      unsigned long waitTimeout = 3000; // 3 second max wait (reduced from 5s)
+      int waitIterations = 0;
+      while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
+        yield();
+        delay(100);
+        waitIterations++;
+        // Safety: if we've been waiting a while and units aren't responding, break
+        if (waitIterations > 10) {
+          // Check if we're stuck because units aren't responding
+          bool allUnitsStuck = true;
+          for (int i = 0; i < UNITS_AMOUNT; i++) {
+            if (displayState[i] == 0) { // At least one unit is ready
+              allUnitsStuck = false;
+              break;
+            }
+          }
+          if (allUnitsStuck) {
+            SerialPrintln("DEBUG: Units not responding, skipping wait");
+            break;
+          }
+        }
+      }
+      
+      if (millis() - waitStart >= waitTimeout) {
+        SerialPrintln("DEBUG: Timeout waiting for units, continuing anyway");
+      }
+      
+      // Hold the display for 1 second so numbers are visible
+      SerialPrintln("DEBUG: Unit numbers displayed, holding for 1 second...");
+      delay(1000);
+      yield();
+    }
+#endif
+    
+    // Wait for all units to finish their initial calibration (they calibrate on startup)
+    // Units can take 5-30 seconds to calibrate depending on Hall sensor position
+    SerialPrintln("DEBUG: Waiting for units to finish initial calibration...");
+    unsigned long calibrationWaitStart = millis();
+    unsigned long calibrationWaitTimeout = 35000; // 35 second max wait for calibration
+    int calibrationCheckCount = 0;
+    
+    while (millis() - calibrationWaitStart < calibrationWaitTimeout) {
+      bool allUnitsReady = true;
+      int readyCount = 0;
+      
+      // Check status of all units
+      for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
+        int status = checkIfMoving(unitIndex);
+        displayState[unitIndex] = status;
+        
+        if (status == 1) {
+          // Unit is still busy (calibrating)
+          allUnitsReady = false;
+        } else if (status == 0) {
+          // Unit is ready
+          readyCount++;
+        }
+        // Ignore -1 (sleeping) as units may sleep during calibration
+      }
+      
+      if (allUnitsReady) {
+        SerialPrint("DEBUG: All units finished calibration (");
+        SerialPrint(readyCount);
+        SerialPrintln(" units ready)");
+        break;
+      }
+      
+      calibrationCheckCount++;
+      if (calibrationCheckCount % 10 == 0) {
+        // Log progress every 10 checks (every ~2 seconds)
+        SerialPrint("DEBUG: Waiting for units to calibrate... (");
+        SerialPrint(readyCount);
+        SerialPrint("/");
+        SerialPrint(UNITS_AMOUNT);
+        SerialPrintln(" ready)");
+      }
+      
+      yield();
+      delay(200); // Check every 200ms
+    }
+    
+    if (millis() - calibrationWaitStart >= calibrationWaitTimeout) {
+      SerialPrintln("DEBUG: WARNING - Calibration wait timeout. Some units may still be calibrating.");
+      SerialPrintln("DEBUG: System will continue, but first command may timeout if units aren't ready.");
+    }
+    
     debugStatus = "Ready";
     SerialPrintln("DEBUG: Status = " + debugStatus);
     SerialPrintln("Split Flap Ready!");
@@ -1076,12 +1320,7 @@ void setup() {
       SerialPrintln("Please hard restart your device to try connect again");
       SerialPrintln("#######################################################");
       // Continuous blink to indicate error
-      for (int i = 0; i < 10; i++) {
-        ledOn();
-        delay(100);
-        ledOff();
-        delay(100);
-      }
+      continuousBlink(10000); // Blink for 10 seconds
     }
   }
 }
@@ -1296,13 +1535,24 @@ void scanI2CBus() {
     delay(10);
   }
   
+  // Count how many expected units (0 to UNITS_AMOUNT-1) are actually connected
+  int connectedExpectedUnits = 0;
+  for (int i = 0; i < UNITS_AMOUNT; i++) {
+    if (foundUnits[i]) {
+      connectedExpectedUnits++;
+    }
+  }
+  connectedUnitCount = connectedExpectedUnits; // Store for web UI
+  
   // Summary report
   SerialPrintln("");
   SerialPrintln("--- Scan Summary ---");
-  SerialPrint("Total devices found: ");
-  SerialPrintln(foundCount);
   SerialPrint("Expected units: ");
-  SerialPrintln(UNITS_AMOUNT);
+  SerialPrint(UNITS_AMOUNT);
+  SerialPrint(" | Connected units: ");
+  SerialPrintln(connectedExpectedUnits);
+  SerialPrint("Total devices found on I2C bus: ");
+  SerialPrintln(foundCount);
   SerialPrintln("");
   
   // Report which units are connected vs missing
@@ -1378,10 +1628,16 @@ String getCurrentSettingValues() {
 
   document["timezoneOffset"] = timezone.getOffset();
   document["unitCount"] = UNITS_AMOUNT;
+  document["connectedUnitCount"] = connectedUnitCount;
   document["alignment"] = alignment;
   document["flapSpeed"] = flapSpeed;
   document["deviceMode"] = deviceMode;
   document["version"] = espVersion;
+#if PAGE_LOAD_DEBUG_ENABLE == true
+  document["pageLoadDebugEnabled"] = true;
+#else
+  document["pageLoadDebugEnabled"] = false;
+#endif
   document["lastTimeReceivedMessageDateTime"] = lastReceivedMessageDateTime;
   document["lastWrittenText"] = lastWrittenText;
   document["countdownToDateUnix"] = atol(countdownToDateUnix.c_str());
@@ -1461,6 +1717,11 @@ String getCurrentSettingValues() {
     minimalDoc["flapSpeed"] = flapSpeed;
     minimalDoc["deviceMode"] = deviceMode;
     minimalDoc["version"] = espVersion;
+#if PAGE_LOAD_DEBUG_ENABLE == true
+    minimalDoc["pageLoadDebugEnabled"] = true;
+#else
+    minimalDoc["pageLoadDebugEnabled"] = false;
+#endif
     minimalDoc["wifiStatus"] = WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected";
     minimalDoc["wifiRssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
     minimalDoc["wifiIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";

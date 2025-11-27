@@ -10,7 +10,7 @@ char receivedChars[numChars]; // an array to store the received data
 boolean newData = false;
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(57600);
   Serial.println("init");
   getData();
 }
