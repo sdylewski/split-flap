@@ -84,6 +84,9 @@ Each unit consists of:
 - Press two M3 nuts diagonally into the frame back; use temporary screws to
   pull them tight.
 - Route wiring through the provided channels (see legacy Figures 11–13).
+- **Hall sensor mounting:** The hall sensor mounting holes in this version have
+  **9 mm spacing** (prior versions used 10.9 mm spacing). Ensure your hall sensor
+  PCB matches this spacing before mounting.
 - Confirm the hall sensor LED only lights when a magnet is nearby.
 
 ## 5. Middle Frame & Case

@@ -10,7 +10,7 @@ char receivedChars[numChars]; // an array to store the received data
 boolean newData = false;
 
 void setup() {
-  Serial.begin(57600);
+  Serial.begin(9600);
   Serial.println("init");
   getData();
 }
@@ -22,6 +22,7 @@ void loop() {
 
 void getData() {
   EEPROM.get(eeAddress, calOffsetGet);
+  Serial.println();
   Serial.print("Offset already stored in EEPROM: ");
   Serial.print(calOffsetGet);
   Serial.println();

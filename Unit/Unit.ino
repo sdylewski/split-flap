@@ -1,5 +1,18 @@
 /*********
   Split Flap Arduino Nano Unit
+  Version: 1.1.1
+  Changes: Fixed calibration logic to handle case where unit starts at marker position (prevents double offset on reboot)
+  
+  Version History:
+  - 1.1.1: Fixed calibration to move away from marker if already at it on startup (prevents double offset)
+  - 1.1.0: Added expanded I2C status codes (0=ready, 1=busy, 2=cal_searching, 3=cal_offset, 4=cal_error, -1=sleeping)
+  
+  Major Changes from Scientress Fork:
+  - Expanded I2C status reporting: Units now report detailed calibration states (searching, applying offset, errors)
+  - Improved serial debugging: Added delay after Serial.begin() to prevent garbled characters, added timestamps to all serial output
+  - Version tracking: Added firmware version number for easier debugging and verification
+  - Simplified calibration code: Removed excessive debug logging to match original working version
+  - Fixed calibration startup: Handles case where unit reboots while already at marker position
 *********/
 
 //#define SERIAL_ENABLE // uncomment for serial debug communication
@@ -49,7 +62,7 @@ bool lastInd2 = false; //store last status of phase
 bool lastInd3 = false; //store last status of phase
 bool lastInd4 = false; //store last status of phase
 float missedSteps = 0; //cummulate steps <1, to compensate via additional step when reaching >1
-int currentlyrotating = 0; // 1 = drum is currently rotating, 0 = drum is standing still
+int currentlyrotating = 0; // Status codes: 0=ready, 1=busy/moving, 2=calibrating(searching), 3=calibrating(offset), 4=calibration_error, -1=sleeping
 int stepperSpeed = 10; //current speed of stepper, value only for first homing
 int eeAddress = 0;   //EEPROM address for calibration offset
 uint16_t calOffset;       //Offset for calibration in steps, stored in EEPROM, gets read in setup
@@ -75,6 +88,15 @@ void run_test() {
 }
 #endif
 
+#ifdef SERIAL_ENABLE
+// Helper function to print timestamp before serial messages
+void SerialPrintTimestamp() {
+  Serial.print(F("["));
+  Serial.print(millis());
+  Serial.print(F("ms] "));
+}
+#endif
+
 //setup
 void setup() {
   // i2c adress switch
@@ -91,7 +113,13 @@ void setup() {
 #ifdef SERIAL_ENABLE
   //initialize serial
   Serial.begin(BAUDRATE);
+  delay(100); // Wait for serial port to initialize (helps prevent garbled characters)
+  SerialPrintTimestamp();
   Serial.println("starting unit");
+  SerialPrintTimestamp();
+  Serial.print("Firmware Version: ");
+  Serial.println("1.1.1");
+  SerialPrintTimestamp();
   Serial.print("I2CAddress: ");
   Serial.println(i2cAddress);
 #endif
@@ -113,6 +141,17 @@ void setup() {
 void loop() {
   unsigned long currentMillis = millis();
   if (currentMillis - previousMillis >= WAIT_TIME) {
+#ifdef SERIAL_ENABLE
+    // Only log sleep/wake if unit is busy (unusual state) or first few cycles for debugging
+    static int sleepCycleCount = 0;
+    if (currentlyrotating != 0 || sleepCycleCount < 3) {
+      SerialPrintTimestamp();
+      Serial.print(F("Going to sleep (currentlyrotating="));
+      Serial.print(currentlyrotating);
+      Serial.println(F(")"));
+    }
+    sleepCycleCount++;
+#endif
     byte old_ADCSRA = ADCSRA;
     // disable ADC
     ADCSRA = 0;
@@ -133,6 +172,15 @@ void loop() {
     previousMillis = currentMillis; //reset sleep counter
     ADCSRA = old_ADCSRA;
 
+#ifdef SERIAL_ENABLE
+    // Only log wake/I2C reinit if unit is busy or first few cycles
+    if (currentlyrotating != 0 || sleepCycleCount <= 3) {
+      SerialPrintTimestamp();
+      Serial.println(F("Woke up from sleep"));
+      SerialPrintTimestamp();
+      Serial.println(F("I2C reinitialized after sleep"));
+    }
+#endif
     // release TWI bus
     TWCR = bit(TWEN) | bit(TWIE) | bit(TWEA) | bit(TWINT);
 
@@ -145,6 +193,7 @@ void loop() {
   {
     /*
       #ifdef SERIAL_ENABLE
+      SerialPrintTimestamp();
       Serial.print("Value over serial received: ");
       Serial.print(receivedNumber);
       Serial.print(" Letter: ");
@@ -187,6 +236,7 @@ void rotateToLetter(int toLetter) {
     posCurrentLetter = displayedLetter;
     //int amountLetters = sizeof(letters) / sizeof(String);
 #ifdef SERIAL_ENABLE
+    SerialPrintTimestamp();
     Serial.print(F("go to letter: "));
     Serial.println(letters[toLetter]);
 #endif
@@ -195,6 +245,7 @@ void rotateToLetter(int toLetter) {
       //check if letter is on higher index, then no full rotaion is needed
       if (posLetter >= posCurrentLetter) {
 #ifdef SERIAL_ENABLE
+        SerialPrintTimestamp();
         Serial.println("direct");
 #endif
         //go directly to next letter, get steps from current letter to target letter
@@ -216,6 +267,7 @@ void rotateToLetter(int toLetter) {
       else {
         //full rotation is needed, good time for a calibration
 #ifdef SERIAL_ENABLE
+        SerialPrintTimestamp();
         Serial.println(F("full rotation incl. calibration"));
 #endif
         calibrate(false); //calibrate revolver and do not stop motor
@@ -240,6 +292,7 @@ void rotateToLetter(int toLetter) {
     }
     else {
 #ifdef SERIAL_ENABLE
+      SerialPrintTimestamp();
       Serial.println("letter unknown, go to space");
 #endif
       desiredLetter = 0;
@@ -267,15 +320,17 @@ void receiveLetter(int numBytes) {
 }
 
 void requestEvent() {
+#ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
+  Serial.print(F("Status request received - sending: "));
+  Serial.print(currentlyrotating);
+  Serial.print(F(" (0=ready, 1=busy, 2=cal_searching, 3=cal_offset, 4=cal_error, -1=sleeping)"));
+  Serial.print(F(" | displayedLetter: "));
+  Serial.print(displayedLetter);
+  Serial.print(F(" | receivedNumber: "));
+  Serial.println(receivedNumber);
+#endif
   Wire.write(currentlyrotating); //send unit status to master
-  /*
-    #ifdef SERIAL_ENABLE
-    Serial.print("Status ");
-    Serial.print(currentlyrotating);
-    Serial.print(" sent to master");
-    Serial.println();
-    #endif
-  */
 }
 
 //returns the adress of the unit as int from 0-15
@@ -291,6 +346,7 @@ void getOffset() {
     calOffset = 0;
   }
 #ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
   Serial.print(F("CalOffset from EEPROM: "));
   Serial.print(calOffset);
   Serial.println();
@@ -300,35 +356,97 @@ void getOffset() {
 //doing a calibration of the revolver using the hall sensor
 int calibrate(bool initialCalibration) {
 #ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
   Serial.println(F("calibrate revolver"));
+  unsigned long calStartTime = millis();
+  int lastLogStep = -1000; // Track last logged step to avoid spamming
 #endif
-  currentlyrotating = 1; //set active state to active
+  currentlyrotating = 2; // Status: calibrating (searching for marker)
   bool reachedMarker = false;
   stepper.setSpeed(stepperSpeed);
   int i = 0;
   while (!reachedMarker) {
     int currentHallValue = digitalRead(HALLPIN);
-    if (currentHallValue == 1 && i == 0) { //already in zero position move out a bit and do the calibration {
-      //not reached yet
-      i = 50;
-      stepper.step(ROTATIONDIRECTION * 50); //move 50 steps to get out of scope of hall
+    
+#ifdef SERIAL_ENABLE
+    // Log progress every 500 steps or at key moments
+    if (i - lastLogStep >= 500 || i == 0 || i == 50 || (i % 1000 == 0)) {
+      unsigned long elapsed = millis() - calStartTime;
+      SerialPrintTimestamp();
+      Serial.print(F("Step: "));
+      Serial.print(i);
+      Serial.print(F(" / "));
+      Serial.print(3 * STEPS);
+      Serial.print(F(" | Hall: "));
+      Serial.print(currentHallValue);
+      Serial.print(F(" (1=no magnet, 0=magnet) | Time: "));
+      Serial.print(elapsed);
+      Serial.println(F("ms"));
+      lastLogStep = i;
     }
-    else if (currentHallValue == 1) {
-      //not reached yet
+    // Also log when Hall sensor changes state (important for debugging)
+    static int lastHallValue = -1;
+    if (currentHallValue != lastHallValue) {
+      SerialPrintTimestamp();
+      Serial.print(F("Hall sensor changed: "));
+      Serial.print(lastHallValue);
+      Serial.print(F(" -> "));
+      Serial.print(currentHallValue);
+      Serial.print(F(" at step "));
+      Serial.print(i);
+      Serial.println();
+      lastHallValue = currentHallValue;
+    }
+#endif
+    
+    if (i == 0) {
+      // At start of calibration - check initial Hall sensor state
+      if (currentHallValue == 0) {
+        // Already at marker position at startup - move away first to ensure we find it properly
+        // This prevents double-applying offset if unit reboots while already homed
+#ifdef SERIAL_ENABLE
+        SerialPrintTimestamp();
+        Serial.println(F("Already at marker at startup, moving 50 steps away to re-find it"));
+#endif
+        i = 50;
+        stepper.step(ROTATIONDIRECTION * 50); //move 50 steps to get out of scope of hall
+        // Continue loop - next iteration will check Hall sensor again after moving
+        i++; // Increment so we don't hit this check again
+        continue; // Re-check Hall sensor after moving away
+      }
+      // If Hall == 1 at startup, that's normal - continue with normal search below
+    }
+    
+    if (currentHallValue == 1) {
+      //not reached yet - still searching for marker
+      currentlyrotating = 2; // Keep status as "calibrating (searching)"
       stepper.step(ROTATIONDIRECTION * 1);
     }
-    else {
-      //reached marker, go to calibrated offset position
+    else if (currentHallValue == 0 && i > 0) {
+      //reached marker (and we've moved at least 1 step, so we found it properly)
+      // The i > 0 check ensures we didn't just start at the marker (prevents double offset)
       reachedMarker = true;
+      currentlyrotating = 3; // Status: calibrating (applying offset)
       stepper.step(ROTATIONDIRECTION * calOffset);
       displayedLetter = 0;
       missedSteps = 0;
 #ifdef SERIAL_ENABLE
+      unsigned long totalTime = millis() - calStartTime;
+      SerialPrintTimestamp();
+      Serial.print(F("*** MARKER FOUND *** at step: "));
+      Serial.print(i);
+      Serial.print(F(" | Time: "));
+      Serial.print(totalTime);
+      Serial.println(F("ms"));
+      SerialPrintTimestamp();
       Serial.println(F("revolver calibrated"));
 #endif
       //Only stop motor for initial calibration
       if (initialCalibration) {
         stopMotor();
+      } else {
+        // If not initial calibration, we're still moving, so set status to busy
+        currentlyrotating = 1;
       }
       return i;
     }
@@ -337,7 +455,19 @@ int calibrate(bool initialCalibration) {
       displayedLetter = 0;
       desiredLetter = 0;
       reachedMarker = true;
+      currentlyrotating = 4; // Status: calibration error/timeout
 #ifdef SERIAL_ENABLE
+      unsigned long elapsed = millis() - calStartTime;
+      SerialPrintTimestamp();
+      Serial.print(F("*** CALIBRATION TIMEOUT *** after "));
+      Serial.print(elapsed);
+      Serial.print(F("ms and "));
+      Serial.print(i);
+      Serial.println(F(" steps (3 full rotations)"));
+      SerialPrintTimestamp();
+      Serial.print(F("Final Hall sensor reading: "));
+      Serial.println(digitalRead(HALLPIN));
+      SerialPrintTimestamp();
       Serial.println(F("calibration revolver failed"));
 #endif
       stopMotor();
@@ -360,6 +490,7 @@ void stopMotor() {
   digitalWrite(STEPPERPIN3, LOW);
   digitalWrite(STEPPERPIN4, LOW);
 #ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
   Serial.println(F("Motor Stop"));
 #endif
   currentlyrotating = 0; //set active state to not active
@@ -368,6 +499,7 @@ void stopMotor() {
 
 void startMotor() {
 #ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
   Serial.println(F("Motor Start"));
 #endif
   currentlyrotating = 1; //set active state to active
@@ -383,6 +515,7 @@ void writeToEEPROM(uint16_t offsetValue) {
   EEPROM.put(eeAddress, offsetValue);
 
 #ifdef SERIAL_ENABLE
+  SerialPrintTimestamp();
   Serial.print(F("Value written to EEPROM: "));
   Serial.print(calOffset);
   Serial.println();
@@ -417,12 +550,14 @@ void recvWithEndMarker() {
     if (receivedChars[0] != 0x00 && receivedChars[1] == 0x00) {
       auto new_letter = translateLettertoInt(receivedChars[0]);
       if (new_letter == -1) {
+        SerialPrintTimestamp();
         Serial.println(F("Letter not found in index"));
       } else {
         stepperSpeed = 12;
         receivedNumber = new_letter;
       }
     } else if (strncmp(receivedChars, "test", numChars) == 0) {
+      SerialPrintTimestamp();
       Serial.println(F("Starting calibration test"));
       calibrate(true);
       run_test();
@@ -431,6 +566,7 @@ void recvWithEndMarker() {
       calOffset = String(receivedChars).toInt();
       // check if the integer conversion failed
       if (calOffset == 0 && receivedChars[0] != '0') {
+        SerialPrintTimestamp();
         Serial.println(F("Invalid Command"));
       } else {
         // save to eeprom
