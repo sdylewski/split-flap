@@ -12,6 +12,18 @@
   Licensed under GNU: https://github.com/JonnyBooker/split-flap/blob/master/LICENSE
   
   Modified by Scott - Added LED debug codes and non-blocking operations for better web server responsiveness
+  
+  Version: 1.1.3
+  Changes: Added explicit wait for all motors to stop before delay between words in multi-word strings
+           Ensures motors are fully stopped before starting the 5-second delay between words
+  
+  Major Changes from Scientress Fork:
+  - Expanded I2C status codes: ESPMaster now interprets detailed unit calibration states for better debugging
+  - Enhanced calibration wait loop: Improved timeout handling, stuck unit detection, and progress logging
+  - Improved error handling: Better I2C error reporting and unit status tracking during calibration
+  - Version tracking: Added firmware version number for easier debugging and verification
+  - ESP-01S support: Better handling of ESP-01S vs ESP-01 differences (LED, I2C initialization)
+  - Serial/I2C conflict handling: Proper initialization to avoid GPIO 1 conflicts on ESP-01
 */
 
 /* .--------------------------------------------------------------------------------. */
@@ -28,7 +40,7 @@
 #define SERIAL_ENABLE       false   //Option to enable serial debug messages
 #define UNIT_CALLS_DISABLE  false   //Option to disable the call to the units so can just debug the ESP with no connections
 #define OTA_ENABLE          false    //Option to enable OTA functionality
-#define UNITS_AMOUNT        4       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
+#define UNITS_AMOUNT        8       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
 #define SERIAL_BAUDRATE     57600  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
 #define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
@@ -309,9 +321,13 @@ void continuousBlink(int duration) {
 void setup() {
 #if SERIAL_ENABLE == true
   //Setup so we can see serial messages
+  //NOTE: On ESP-01, GPIO 1 is shared between TX (serial) and SDA (I2C), so I2C is disabled when serial is enabled
+  //For debugging with multiple units, disable SERIAL_ENABLE and use unit.ino serial debugging instead
   Serial.begin(SERIAL_BAUDRATE);
 #elif !defined(FAE_MOD)
-  //For ESP01 only
+  //For ESP01/ESP01S - I2C on GPIO 1 (SDA) and GPIO 3 (SCL)
+  //Note: ESP-01S is recommended over ESP-01 due to better I2C performance
+  //On ESP-01, GPIO 1 is also TX, which conflicts with serial, so I2C is only enabled when serial is disabled
   Wire.begin(1, 3); 
   
   //De-activate I2C if debugging the ESP, otherwise serial does not work
@@ -340,6 +356,8 @@ void setup() {
   SerialPrintln("#######################################################");
   SerialPrintln("..............Split Flap Display Starting..............");
   SerialPrintln("#######################################################");
+  SerialPrintln("Firmware Version: 1.1.3");
+  SerialPrintln("");
   debugStatus = "Starting";
   SerialPrintln("DEBUG: Status = " + debugStatus);
 
@@ -662,210 +680,7 @@ void setup() {
       request->send(200, "application/json", jsonString);
     });
     
-    // Detailed unit status endpoint - check a specific unit multiple times
-    webServer.on("/unit-status", HTTP_GET, [](AsyncWebServerRequest * request) {
-      int unitAddress = -1;
-      if (request->hasParam("unit")) {
-        unitAddress = request->getParam("unit")->value().toInt();
-      }
-      
-      if (unitAddress < 0 || unitAddress >= UNITS_AMOUNT) {
-        request->send(400, "application/json", "{\"error\":\"Invalid unit address. Use ?unit=0 to " + String(UNITS_AMOUNT - 1) + "\"}");
-        return;
-      }
-      
-      SerialPrint("DEBUG: Detailed status check requested for unit ");
-      SerialPrintln(unitAddress);
-      
-      JsonDocument doc;
-      doc["unit"] = unitAddress;
-      doc["checkTime"] = millis();
-      
-      // Check I2C connection first (quick check)
-      Wire.beginTransmission(unitAddress);
-      byte i2cError = Wire.endTransmission();
-      doc["i2cError"] = i2cError;
-      
-      if (i2cError == 0) {
-        doc["i2cConnected"] = true;
-        
-        // Check status fewer times (3 instead of 5) with shorter delays to avoid timeout
-        // Also add timeout protection for each check
-        int statusReadings[3];
-        unsigned long statusCheckStart = millis();
-        const unsigned long MAX_STATUS_CHECK_TIME = 5000; // 5 second max for all checks
-        
-        for (int i = 0; i < 3; i++) {
-          unsigned long checkStart = millis();
-          
-          // Try to read status with timeout protection
-          statusReadings[i] = -2; // Default to "no response"
-          
-          // Quick I2C request with minimal blocking
-          Wire.requestFrom(unitAddress, ANSWER_SIZE, 1);
-          
-          // Wait for response but with timeout
-          unsigned long waitStart = millis();
-          while (!Wire.available() && (millis() - waitStart < 500)) {
-            yield(); // Allow web server to process
-            delay(10);
-          }
-          
-          if (Wire.available()) {
-            statusReadings[i] = Wire.read();
-          } else {
-            // Timeout - unit not responding quickly
-            SerialPrint("WARNING: Unit ");
-            SerialPrint(unitAddress);
-            SerialPrintln(" status check timed out");
-            statusReadings[i] = -2; // No response
-          }
-          
-          // Check if we're taking too long overall
-          if (millis() - statusCheckStart > MAX_STATUS_CHECK_TIME) {
-            SerialPrintln("WARNING: Status check taking too long, stopping early");
-            // Fill remaining with -2 (no response)
-            for (int j = i + 1; j < 3; j++) {
-              statusReadings[j] = -2;
-            }
-            break;
-          }
-          
-          yield(); // Allow web server to process
-          if (i < 2) { // Don't delay after last reading
-            delay(100); // Reduced from 200ms to 100ms
-          }
-        }
-        
-        // Add readings to JSON
-        for (int i = 0; i < 3; i++) {
-          doc["statusReadings"][i] = statusReadings[i];
-        }
-        
-        // Analyze readings (ignore -2 "no response" values in analysis)
-        bool allSame = true;
-        int firstValidStatus = -3;
-        int validStatusCount = 0;
-        
-        for (int i = 0; i < 3; i++) {
-          if (statusReadings[i] != -2) { // -2 means no response/timeout
-            if (firstValidStatus == -3) {
-              firstValidStatus = statusReadings[i];
-            }
-            validStatusCount++;
-            if (statusReadings[i] != firstValidStatus) {
-              allSame = false;
-            }
-          }
-        }
-        
-        doc["allReadingsSame"] = allSame;
-        doc["validStatusCount"] = validStatusCount;
-        
-        if (validStatusCount == 0) {
-          doc["consistentStatus"] = -2;
-          doc["statusText"] = "no response";
-          doc["diagnosis"] = "Unit is not responding to I2C status requests. Unit may be stuck, sleeping, or having communication issues.";
-          doc["suggestedFix"] = "Check I2C wiring, power, and DIP switch settings. Try resetting the unit or power cycling.";
-        } else {
-          doc["consistentStatus"] = firstValidStatus;
-          
-          if (allSame && firstValidStatus == 1) {
-            doc["diagnosis"] = "Unit is stuck in BUSY/MOVING state. The motor may be physically stuck, Hall sensor not detecting home, or calibration failed.";
-            doc["suggestedFix"] = "Try 'Reset/Home Unit' button to force calibration. If that doesn't work, check: motor can rotate freely, Hall sensor wiring, magnet alignment, and calibration offset.";
-          } else if (allSame && firstValidStatus == -1) {
-            doc["diagnosis"] = "Unit is sleeping or not responding to I2C requests.";
-            doc["suggestedFix"] = "Unit should wake up automatically when sent a command. Try 'Reset/Home Unit' button.";
-          } else if (allSame && firstValidStatus == 0) {
-            doc["diagnosis"] = "Unit is ready and not moving.";
-          } else {
-            doc["diagnosis"] = "Unit status is inconsistent - may be transitioning between states or having communication issues.";
-          }
-          
-          // Status text
-          if (firstValidStatus == 0) {
-            doc["statusText"] = "ready";
-          } else if (firstValidStatus == 1) {
-            doc["statusText"] = "busy/moving";
-          } else if (firstValidStatus == -1) {
-            doc["statusText"] = "sleeping";
-          } else {
-            doc["statusText"] = "unknown";
-          }
-        }
-      } else {
-        doc["i2cConnected"] = false;
-        doc["diagnosis"] = "Unit not found on I2C bus. Check DIP switch settings, wiring, and power.";
-        if (i2cError == 2) {
-          doc["i2cErrorText"] = "Address NACK (device not found)";
-        } else if (i2cError == 3) {
-          doc["i2cErrorText"] = "Data NACK";
-        } else if (i2cError == 4) {
-          doc["i2cErrorText"] = "Unknown I2C error";
-        } else if (i2cError == 5) {
-          doc["i2cErrorText"] = "Timeout";
-        }
-      }
-      
-      String jsonString;
-      serializeJson(doc, jsonString);
-      request->send(200, "application/json", jsonString);
-    });
-    
-    // Force unit to home/calibrate by sending it to position 0
-    webServer.on("/unit-reset", HTTP_GET, [](AsyncWebServerRequest * request) {
-      int unitAddress = -1;
-      if (request->hasParam("unit")) {
-        unitAddress = request->getParam("unit")->value().toInt();
-      }
-      
-      if (unitAddress < 0 || unitAddress >= UNITS_AMOUNT) {
-        request->send(400, "application/json", "{\"error\":\"Invalid unit address. Use ?unit=0 to " + String(UNITS_AMOUNT - 1) + "\"}");
-        return;
-      }
-      
-      SerialPrint("DEBUG: Reset/home command requested for unit ");
-      SerialPrintln(unitAddress);
-      
-      // Check I2C connection first
-      Wire.beginTransmission(unitAddress);
-      byte i2cError = Wire.endTransmission();
-      
-      JsonDocument doc;
-      doc["unit"] = unitAddress;
-      doc["action"] = "reset";
-      
-      if (i2cError != 0) {
-        doc["error"] = "Unit not found on I2C bus";
-        doc["i2cError"] = i2cError;
-        String jsonString;
-        serializeJson(doc, jsonString);
-        request->send(200, "application/json", jsonString);
-        return;
-      }
-      
-      // Send unit to position 0 (space) with default speed
-      // This should trigger calibration if the unit needs a full rotation
-      writeToUnit(unitAddress, 0, 80); // Position 0 = space, speed 80
-      
-      // Verify the command was sent by checking I2C error
-      Wire.beginTransmission(unitAddress);
-      byte verifyError = Wire.endTransmission();
-      
-      if (verifyError == 0) {
-        doc["message"] = "Reset command sent successfully. Unit should now move to position 0 (space) and calibrate.";
-        doc["note"] = "This may take 10-30 seconds. Check unit status after a few seconds to see progress.";
-        doc["success"] = true;
-      } else {
-        doc["message"] = "Command sent but unit may not be responding properly.";
-        doc["i2cError"] = verifyError;
-        doc["success"] = false;
-      }
-      
-      String jsonString;
-      serializeJson(doc, jsonString);
-      request->send(200, "application/json", jsonString);
-    });
+    // Unit Diagnostics endpoints removed (/unit-status and /unit-reset) - section removed from UI
     
 #if DEBUG_ENABLE == true
     webServer.on("/exit-debug-mode", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -1254,36 +1069,134 @@ void setup() {
 #endif
     
     // Wait for all units to finish their initial calibration (they calibrate on startup)
-    // Units can take 5-30 seconds to calibrate depending on Hall sensor position
+    // Units can take 5-30 seconds normally, but units with Hall sensor issues may take up to 60 seconds
+    // (they will timeout after 3 full rotations if Hall sensor doesn't detect magnet)
     SerialPrintln("DEBUG: Waiting for units to finish initial calibration...");
     unsigned long calibrationWaitStart = millis();
-    unsigned long calibrationWaitTimeout = 35000; // 35 second max wait for calibration
+    unsigned long calibrationWaitTimeout = 60000; // 60 second max wait (increased to handle units with Hall sensor issues)
     int calibrationCheckCount = 0;
+    int consecutiveReadyChecks = 0; // Track consecutive checks where all units are ready
+    const int REQUIRED_CONSECUTIVE_READY = 3; // Require 3 consecutive ready checks (600ms) to ensure units are truly ready
+    unsigned long stuckUnitStartTime[UNITS_AMOUNT]; // Track when each unit started being stuck
+    bool unitStuckTracked[UNITS_AMOUNT] = {false}; // Track if we've started tracking a stuck unit
+    const unsigned long STUCK_UNIT_TIMEOUT = 50000; // If a unit is stuck for 50 seconds, allow system to proceed anyway
     
     while (millis() - calibrationWaitStart < calibrationWaitTimeout) {
       bool allUnitsReady = true;
       int readyCount = 0;
       
       // Check status of all units
+      bool hasStuckUnit = false;
       for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
         int status = checkIfMoving(unitIndex);
         displayState[unitIndex] = status;
         
-        if (status == 1) {
-          // Unit is still busy (calibrating)
+        if (status == 1 || status == 2 || status == 3) {
+          // Unit is busy (1=moving, 2=calibrating searching, 3=calibrating offset)
+          // Track if this unit has been stuck for a long time
+          if (!unitStuckTracked[unitIndex]) {
+            stuckUnitStartTime[unitIndex] = millis();
+            unitStuckTracked[unitIndex] = true;
+            if (status == 2) {
+              SerialPrint("DEBUG: Unit ");
+              SerialPrint(unitIndex);
+              SerialPrintln(" started calibration - searching for marker (status = 2)");
+            } else if (status == 3) {
+              SerialPrint("DEBUG: Unit ");
+              SerialPrint(unitIndex);
+              SerialPrintln(" applying calibration offset (status = 3)");
+            } else {
+              SerialPrint("DEBUG: Unit ");
+              SerialPrint(unitIndex);
+              SerialPrintln(" started moving (status = 1)");
+            }
+          } else {
+            unsigned long stuckDuration = millis() - stuckUnitStartTime[unitIndex];
+            // Check if this unit has been stuck for too long
+            if (stuckDuration > STUCK_UNIT_TIMEOUT) {
+              SerialPrint("DEBUG: WARNING - Unit ");
+              SerialPrint(unitIndex);
+              SerialPrint(" has been reporting BUSY (status=");
+              SerialPrint(status);
+              SerialPrint(") for ");
+              SerialPrint(stuckDuration / 1000);
+              SerialPrintln(" seconds.");
+              if (status == 2) {
+                SerialPrintln("DEBUG: Unit is still searching for marker - may be hitting timeout (3 full rotations).");
+              } else if (status == 4) {
+                SerialPrintln("DEBUG: Unit reported calibration error/timeout.");
+              }
+              SerialPrintln("DEBUG: The unit will eventually timeout and set status to 0. System will proceed.");
+              hasStuckUnit = true;
+              // Don't reset allUnitsReady - allow system to proceed if most units are ready
+            } else if (stuckDuration > 30000 && stuckDuration % 10000 < 200) {
+              // Log every 10 seconds after 30 seconds
+              SerialPrint("DEBUG: Unit ");
+              SerialPrint(unitIndex);
+              SerialPrint(" still busy (status=");
+              SerialPrint(status);
+              SerialPrint(") after ");
+              SerialPrint(stuckDuration / 1000);
+              if (status == 2) {
+                SerialPrintln(" seconds (searching for marker)");
+              } else if (status == 3) {
+                SerialPrintln(" seconds (applying offset)");
+              } else {
+                SerialPrintln(" seconds (moving)");
+              }
+            }
+          }
           allUnitsReady = false;
+          consecutiveReadyChecks = 0; // Reset counter if any unit is busy
+        } else if (status == 4) {
+          // Calibration error - treat as busy but log the error
+          SerialPrint("DEBUG: Unit ");
+          SerialPrint(unitIndex);
+          SerialPrintln(" reported calibration error/timeout (status = 4)");
+          allUnitsReady = false;
+          consecutiveReadyChecks = 0;
         } else if (status == 0) {
-          // Unit is ready
+          // Unit is ready - clear stuck tracking and log if it was stuck
+          if (unitStuckTracked[unitIndex]) {
+            unsigned long stuckDuration = millis() - stuckUnitStartTime[unitIndex];
+            SerialPrint("DEBUG: Unit ");
+            SerialPrint(unitIndex);
+            SerialPrint(" finished calibration after ");
+            SerialPrint(stuckDuration / 1000);
+            SerialPrintln(" seconds");
+            unitStuckTracked[unitIndex] = false;
+          }
           readyCount++;
+        } else {
+          // Unit is sleeping or not responding - clear stuck tracking
+          if (unitStuckTracked[unitIndex]) {
+            unitStuckTracked[unitIndex] = false;
+          }
         }
-        // Ignore -1 (sleeping) as units may sleep during calibration
+      }
+      
+      // If we have a stuck unit that's been stuck for a long time, and most other units are ready,
+      // allow the system to proceed (the stuck unit will eventually timeout and work)
+      if (hasStuckUnit && readyCount >= (UNITS_AMOUNT - 1)) {
+        SerialPrintln("DEBUG: Most units are ready. Stuck unit will continue calibrating in background.");
+        SerialPrintln("DEBUG: System will proceed - stuck unit will timeout and be ready shortly.");
+        break; // Exit wait loop
       }
       
       if (allUnitsReady) {
-        SerialPrint("DEBUG: All units finished calibration (");
-        SerialPrint(readyCount);
-        SerialPrintln(" units ready)");
-        break;
+        consecutiveReadyChecks++;
+        // Require multiple consecutive ready checks to ensure units are truly done
+        // This handles the case where a unit finishes physically but status hasn't updated yet
+        if (consecutiveReadyChecks >= REQUIRED_CONSECUTIVE_READY) {
+          SerialPrint("DEBUG: All units finished calibration (");
+          SerialPrint(readyCount);
+          SerialPrint("/");
+          SerialPrint(UNITS_AMOUNT);
+          SerialPrintln(" units ready, confirmed over multiple checks)");
+          break;
+        }
+      } else {
+        consecutiveReadyChecks = 0; // Reset if any unit becomes busy again
       }
       
       calibrationCheckCount++;
@@ -1293,7 +1206,13 @@ void setup() {
         SerialPrint(readyCount);
         SerialPrint("/");
         SerialPrint(UNITS_AMOUNT);
-        SerialPrintln(" ready)");
+        SerialPrint(" ready");
+        if (consecutiveReadyChecks > 0) {
+          SerialPrint(", ");
+          SerialPrint(consecutiveReadyChecks);
+          SerialPrint(" consecutive ready checks");
+        }
+        SerialPrintln(")");
       }
       
       yield();
@@ -1303,6 +1222,22 @@ void setup() {
     if (millis() - calibrationWaitStart >= calibrationWaitTimeout) {
       SerialPrintln("DEBUG: WARNING - Calibration wait timeout. Some units may still be calibrating.");
       SerialPrintln("DEBUG: System will continue, but first command may timeout if units aren't ready.");
+      
+      // Log final status of all units
+      SerialPrintln("DEBUG: Final unit status:");
+      for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
+        int status = checkIfMoving(unitIndex);
+        SerialPrint("  Unit ");
+        SerialPrint(unitIndex);
+        SerialPrint(": ");
+        if (status == 0) {
+          SerialPrintln("READY");
+        } else if (status == 1) {
+          SerialPrintln("BUSY (still calibrating?)");
+        } else {
+          SerialPrintln("NOT RESPONDING");
+        }
+      }
     }
     
     debugStatus = "Ready";

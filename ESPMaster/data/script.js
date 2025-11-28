@@ -6,6 +6,7 @@ var unitCount = 0;
 var timezoneOffset = 0;
 var fullDebugLogData = null; // Store full debug log for copying
 var fullSerialLogData = null; // Store full serial log for copying
+var lastSerialLogCount = 0; // Track last log count to detect new messages
 var isPageLoading = true; // Track if page is still loading
 var pageLoadErrors = []; // Store page load errors and status messages
 var pageLoadDebugEnabled = false; // Whether page load debug blocks should be shown (controlled by PAGE_LOAD_DEBUG_ENABLE flag)
@@ -368,6 +369,17 @@ function setDeviceModeTab(mode) {
 	if (tab !== null) {
 		tab.classList.remove("hidden");
 	}
+	
+	// Auto-focus text input when text mode is selected
+	if (mode === "text") {
+		var inputText = document.getElementById("inputText");
+		if (inputText) {
+			// Use setTimeout to ensure the tab is visible before focusing
+			setTimeout(function() {
+				inputText.focus();
+			}, 100);
+		}
+	}
 }
 
 //Sets flap speed by setting the ranges
@@ -400,6 +412,8 @@ function setVersion(version) {
 function setUnitCount(count) {
 	document.getElementById("labelUnits").innerHTML = count;
 	unitCount = count;
+	
+	// Unit selection dropdown removed - Unit Diagnostics section removed
 }
 
 function setConnectedUnitCount(connected, expected) {
@@ -629,14 +643,32 @@ function displaySerialLog(logData) {
 	var container = document.getElementById("containerSerialLog");
 	var countElement = document.getElementById("spanLogCount");
 	
+	// Check if there are new messages
+	var currentLogCount = logData.count || 0;
+	var hasNewMessages = currentLogCount !== lastSerialLogCount;
+	
+	// If no new messages, don't update the display
+	if (!hasNewMessages) {
+		return;
+	}
+	
 	// Store full log data for copying
 	fullSerialLogData = logData;
 	
-	countElement.innerText = logData.count || 0;
+	// Update count
+	countElement.innerText = currentLogCount;
+	lastSerialLogCount = currentLogCount;
 	
 	if (!logData.logs || logData.logs.length === 0) {
 		container.innerHTML = '<div style="color: #888;">No log messages yet.</div>';
 		return;
+	}
+	
+	// Check if user is at the bottom before updating
+	var wasAtBottom = false;
+	if (container.scrollHeight - container.scrollTop <= container.clientHeight + 5) {
+		// User is at or near the bottom (within 5px)
+		wasAtBottom = true;
 	}
 	
 	var html = "";
@@ -663,8 +695,11 @@ function displaySerialLog(logData) {
 	}
 	
 	container.innerHTML = html;
-	// Auto-scroll to bottom
-	container.scrollTop = container.scrollHeight;
+	
+	// Only auto-scroll to bottom if user was already at the bottom
+	if (wasAtBottom) {
+		container.scrollTop = container.scrollHeight;
+	}
 }
 
 // Helper function to escape HTML
@@ -717,8 +752,8 @@ function displayDebugLog(logData) {
 		return;
 	}
 	
-	// During page load, show full log. After page loads, show only last 15 messages
-	var startIdx = isPageLoading ? 0 : Math.max(0, logData.logs.length - 15);
+	// During page load, show full log. After page loads, show only last 30 messages
+	var startIdx = isPageLoading ? 0 : Math.max(0, logData.logs.length - 30);
 	var html = "";
 	for (var i = startIdx; i < logData.logs.length; i++) {
 		var logEntry = logData.logs[i];
@@ -845,164 +880,4 @@ function copySerialLog() {
 	document.body.removeChild(textArea);
 }
 
-// Check status of a specific unit
-function checkUnitStatus() {
-	var unitSelect = document.getElementById("unitSelect");
-	var unitAddress = unitSelect.value;
-	var resultDiv = document.getElementById("unitStatusResult");
-	
-	resultDiv.style.display = "block";
-	resultDiv.innerHTML = "<div style='color: #888;'>Checking unit " + unitAddress + " status...</div>";
-	
-	var xhr = new XMLHttpRequest();
-	xhr.open("GET", "/unit-status?unit=" + unitAddress, true);
-	xhr.timeout = 15000; // 15 second timeout (increased for stuck units)
-	xhr.onload = function() {
-		if (xhr.status === 200) {
-			try {
-				var response = JSON.parse(xhr.responseText);
-				displayUnitStatus(response);
-			} catch (e) {
-				resultDiv.innerHTML = "<div style='color: #f44336;'>Error parsing response: " + e.message + "</div>";
-			}
-		} else {
-			resultDiv.innerHTML = "<div style='color: #f44336;'>Error: HTTP " + xhr.status + "</div>";
-		}
-	};
-	xhr.onerror = function() {
-		resultDiv.innerHTML = "<div style='color: #f44336;'>Network error checking unit status</div>";
-	};
-	xhr.ontimeout = function() {
-		resultDiv.innerHTML = "<div style='color: #f44336;'>Request timed out</div>";
-	};
-	xhr.send();
-}
-
-// Display unit status results
-function displayUnitStatus(data) {
-	var resultDiv = document.getElementById("unitStatusResult");
-	var html = "<div style='margin-bottom: 10px;'><strong>Unit " + data.unit + " Status</strong></div>";
-	
-	if (data.i2cConnected) {
-		html += "<div style='color: #4caf50; margin-bottom: 8px;'>✓ I2C Connected</div>";
-		
-		// Status readings
-		html += "<div style='margin-bottom: 8px;'><strong>Status Readings (3 checks):</strong></div>";
-		html += "<div style='margin-left: 15px; margin-bottom: 8px;'>";
-		if (data.statusReadings && data.statusReadings.length > 0) {
-			for (var i = 0; i < data.statusReadings.length; i++) {
-				var status = data.statusReadings[i];
-				var statusText = "";
-				var statusColor = "#888";
-				if (status === 0) {
-					statusText = "READY";
-					statusColor = "#4caf50";
-				} else if (status === 1) {
-					statusText = "BUSY/MOVING";
-					statusColor = "#ff9800";
-				} else if (status === -1) {
-					statusText = "SLEEPING";
-					statusColor = "#ffc107";
-				} else if (status === -2) {
-					statusText = "NO RESPONSE";
-					statusColor = "#f44336";
-				} else {
-					statusText = "UNKNOWN (" + status + ")";
-					statusColor = "#f44336";
-				}
-				html += "<span style='color: " + statusColor + "; margin-right: 10px;'>Check " + (i + 1) + ": " + statusText + "</span>";
-			}
-		}
-		html += "</div>";
-		if (data.validStatusCount !== undefined) {
-			html += "<div style='margin-left: 15px; margin-bottom: 8px; color: #888; font-size: 0.9em;'>Valid responses: " + data.validStatusCount + " / 3</div>";
-		}
-		
-		// Analysis
-		html += "<div style='margin-bottom: 8px;'><strong>Analysis:</strong></div>";
-		html += "<div style='margin-left: 15px; margin-bottom: 8px; color: #d4d4d4;'>";
-		html += "All readings same: " + (data.allReadingsSame ? "Yes" : "No") + "<br>";
-		html += "Consistent status: " + data.consistentStatus + " (" + data.statusText + ")";
-		html += "</div>";
-		
-		// Diagnosis
-		if (data.diagnosis) {
-			var diagColor = "#ff9800";
-			if (data.consistentStatus === 0) {
-				diagColor = "#4caf50";
-			} else if (data.consistentStatus === 1) {
-				diagColor = "#f44336";
-			}
-			html += "<div style='margin-bottom: 8px; padding: 8px; background-color: #2d2d30; border-left: 3px solid " + diagColor + ";'><strong>Diagnosis:</strong><br>";
-			html += "<span style='color: #d4d4d4;'>" + data.diagnosis + "</span>";
-			if (data.suggestedFix) {
-				html += "<br><br><strong>Suggested Fix:</strong><br>";
-				html += "<span style='color: #d4d4d4;'>" + data.suggestedFix + "</span>";
-			}
-			html += "</div>";
-		}
-	} else {
-		html += "<div style='color: #f44336; margin-bottom: 8px;'>✗ I2C Not Connected</div>";
-		html += "<div style='margin-left: 15px; margin-bottom: 8px;'>";
-		html += "I2C Error Code: " + data.i2cError;
-		if (data.i2cErrorText) {
-			html += " (" + data.i2cErrorText + ")";
-		}
-		html += "</div>";
-		if (data.diagnosis) {
-			html += "<div style='margin-bottom: 8px; padding: 8px; background-color: #2d2d30; border-left: 3px solid #f44336;'><strong>Diagnosis:</strong><br>";
-			html += "<span style='color: #d4d4d4;'>" + data.diagnosis + "</span>";
-			html += "</div>";
-		}
-	}
-	
-	resultDiv.innerHTML = html;
-}
-
-// Reset/home a specific unit
-function resetUnit() {
-	var unitSelect = document.getElementById("unitSelect");
-	var unitAddress = unitSelect.value;
-	var resultDiv = document.getElementById("unitStatusResult");
-	
-	if (!confirm("Reset unit " + unitAddress + "? This will send it to position 0 (space) to trigger calibration.")) {
-		return;
-	}
-	
-	resultDiv.style.display = "block";
-	resultDiv.innerHTML = "<div style='color: #888;'>Resetting unit " + unitAddress + "...</div>";
-	
-	var xhr = new XMLHttpRequest();
-	xhr.open("GET", "/unit-reset?unit=" + unitAddress, true);
-	xhr.timeout = 5000; // 5 second timeout
-	xhr.onload = function() {
-		if (xhr.status === 200) {
-			try {
-				var response = JSON.parse(xhr.responseText);
-				if (response.error) {
-					resultDiv.innerHTML = "<div style='color: #f44336; margin-bottom: 8px;'>✗ Error: " + response.error + "</div>" +
-						(response.i2cError !== undefined ? "<div style='color: #888;'>I2C Error Code: " + response.i2cError + "</div>" : "");
-				} else if (response.success === false) {
-					resultDiv.innerHTML = "<div style='color: #ff9800; margin-bottom: 8px;'>⚠ " + response.message + "</div>" +
-						(response.i2cError !== undefined ? "<div style='color: #888;'>I2C Error Code: " + response.i2cError + "</div>" : "") +
-						"<div style='margin-top: 10px; color: #888;'>Check I2C wiring and power. Try checking unit status.</div>";
-				} else {
-					resultDiv.innerHTML = "<div style='color: #4caf50; margin-bottom: 8px;'>✓ " + response.message + "</div>" +
-						"<div style='color: #888;'>" + response.note + "</div>" +
-						"<div style='margin-top: 10px; color: #888;'>Wait 10-30 seconds, then click 'Check Status' to verify the unit completed.</div>";
-				}
-			} catch (e) {
-				resultDiv.innerHTML = "<div style='color: #f44336;'>Error parsing response: " + e.message + "</div>";
-			}
-		} else {
-			resultDiv.innerHTML = "<div style='color: #f44336;'>Error: HTTP " + xhr.status + "</div>";
-		}
-	};
-	xhr.onerror = function() {
-		resultDiv.innerHTML = "<div style='color: #f44336;'>Network error resetting unit</div>";
-	};
-	xhr.ontimeout = function() {
-		resultDiv.innerHTML = "<div style='color: #f44336;'>Request timed out</div>";
-	};
-	xhr.send();
-}
+	// Unit Diagnostics functions removed - section removed from UI

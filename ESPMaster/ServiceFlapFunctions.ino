@@ -26,11 +26,27 @@ void showText(String message, int delayMillis) {
 
         showMessage(line, convertSpeed(flapSpeed));
     
-        //If the lines index isn't the last, delay showing the next message to give time to read
+        //If the lines index isn't the last, wait for motors to fully stop, then delay before showing next word
         // Use non-blocking delay with yield to allow web server to process
-        if (linesIndex <= messageLines.size()) {
+        if (linesIndex < messageLines.size() - 1) {  // Only delay if not the last line
+          // First, ensure all motors have stopped moving
+          SerialPrintln("Waiting for all motors to stop before delay...");
+          unsigned long waitStart = millis();
+          unsigned long waitTimeout = 30000; // 30 second timeout
+          while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
+            yield(); // Allow web server to process requests
+            delay(100);
+          }
+          
+          if (millis() - waitStart >= waitTimeout) {
+            SerialPrintln("WARNING: Motor stop wait timeout - continuing anyway");
+          } else {
+            SerialPrintln("All motors stopped. Starting delay before next word...");
+          }
+          
+          // Now delay to give time to read the word
           unsigned long delayStart = millis();
-          while (millis() - delayStart < 3000) {
+          while (millis() - delayStart < 5000) {  // 5 second delay for better readability
             yield(); // Allow web server to process requests
             delay(100);
           }
@@ -218,10 +234,69 @@ int checkIfMoving(int address) {
   }
   
   int active = Wire.read();
+  
+  // More detailed logging for debugging calibration issues
+  static unsigned long lastStatusTime[16] = {0};
+  static int lastStatus[16] = {-2};
+  static unsigned long statusStartTime[16] = {0};
+  
+  unsigned long currentTime = millis();
+  
+  // Track how long unit has been in current state
+  if (lastStatus[address] != active) {
+    // Status changed
+    if (lastStatus[address] == 1 && active == 0) {
+      // Unit just finished moving
+      unsigned long duration = currentTime - statusStartTime[address];
+      SerialPrint("Unit ");
+      SerialPrint(address);
+      SerialPrint(" finished moving after ");
+      SerialPrint(duration / 1000);
+      SerialPrintln(" seconds");
+    } else if (active == 1) {
+      // Unit just started moving
+      statusStartTime[address] = currentTime;
+      SerialPrint("Unit ");
+      SerialPrint(address);
+      SerialPrintln(" started moving (status = 1)");
+    }
+    lastStatus[address] = active;
+    lastStatusTime[address] = currentTime;
+  } else if (active == 1) {
+    // Unit still moving - log periodically
+    unsigned long duration = currentTime - statusStartTime[address];
+    if (duration > 5000 && (currentTime - lastStatusTime[address] > 5000)) {
+      // Log every 5 seconds if unit has been moving for more than 5 seconds
+      SerialPrint("Unit ");
+      SerialPrint(address);
+      SerialPrint(" still moving (status = 1) for ");
+      SerialPrint(duration / 1000);
+      SerialPrintln(" seconds");
+      lastStatusTime[address] = currentTime;
+    }
+  }
+  
   SerialPrint("Unit ");
   SerialPrint(address);
   SerialPrint(" status: ");
-  SerialPrintln(active);
+  SerialPrint(active);
+  SerialPrint(" (");
+  if (active == 0) {
+    SerialPrint("READY");
+  } else if (active == 1) {
+    SerialPrint("BUSY/MOVING");
+  } else if (active == 2) {
+    SerialPrint("CALIBRATING (searching for marker)");
+  } else if (active == 3) {
+    SerialPrint("CALIBRATING (applying offset)");
+  } else if (active == 4) {
+    SerialPrint("CALIBRATION ERROR/TIMEOUT");
+  } else if (active == -1) {
+    SerialPrint("SLEEPING");
+  } else {
+    SerialPrint("UNKNOWN");
+  }
+  SerialPrintln(")");
 
   if (active == -1) {
     SerialPrint("WARNING: Unit ");

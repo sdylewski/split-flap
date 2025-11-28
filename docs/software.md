@@ -63,7 +63,55 @@ units, and operate/debug the split-flap display.
 4. **EEPROM offset utility**
    - Upload `EEPROM_Write_Offset.ino` to each unit when calibrating (see below)
 
-## 4. Configuration Options
+## 4. Over-The-Air (OTA) Updates
+
+OTA allows you to update the ESPMaster firmware wirelessly over WiFi without physically connecting the ESP-01S to your computer. This is convenient for deployed displays or when the ESP-01S is difficult to access.
+
+### 4.1 Enabling OTA
+
+1. **Enable OTA in code:**
+   - In `ESPMaster.ino`, set `#define OTA_ENABLE true`
+   - Optionally change the OTA password (default is `"0424"`):
+     ```cpp
+     const char* otaPassword = "0424";  // Change this to your desired password
+     ```
+   - Upload the firmware normally (via USB) with OTA enabled
+
+2. **Activate OTA mode:**
+   - Once the ESP-01S is running and connected to WiFi, open the web interface
+   - Click the "OTA Update" link (only visible when `OTA_ENABLE` is `true`)
+   - Confirm the action - this puts the ESP-01S into OTA mode
+   - A confirmation page will appear
+
+### 4.2 Uploading via OTA
+
+1. **In Arduino IDE:**
+   - Open `ESPMaster/ESPMaster.ino`
+   - Make your code changes
+   - Go to *Tools → Port* and look for a new port named **"Split-Flap-OTA at [IP address]"**
+   - Select this OTA port (it appears as a network port, not a USB serial port)
+   - Click *Upload* as normal - the firmware will be uploaded over WiFi
+
+2. **After upload:**
+   - The ESP-01S will automatically reboot
+   - Wait a few seconds, then refresh the web interface
+   - The device should be running the new firmware
+
+### 4.3 OTA Limitations & Notes
+
+- **LittleFS updates:** OTA can update the firmware sketch, but **cannot update LittleFS files** (web assets). To update `index.html`, `script.js`, or `style.css`, you must use the USB LittleFS upload method.
+- **First-time setup:** OTA must be enabled and uploaded via USB at least once before it can be used wirelessly.
+- **WiFi required:** OTA only works when the ESP-01S is connected to WiFi. If WiFi is down, you must use USB.
+- **Password protection:** The default password is `"0424"`. Change it in the code for security.
+- **Stability:** OTA works best with strong WiFi signal. Poor signal can cause upload failures or corruption.
+
+### 4.4 Troubleshooting OTA
+
+- **OTA port not appearing:** Ensure OTA mode was activated via the web interface, and that the ESP-01S is connected to WiFi
+- **Upload fails:** Check WiFi signal strength (RSSI should be better than -80 dBm), try moving closer to the router, or use USB upload instead
+- **Device unresponsive after OTA:** Power cycle the ESP-01S - sometimes a manual reset is needed after OTA updates
+
+## 5. Configuration Options
 
 At the top of `ESPMaster.ino`, configurable `#define` blocks control behaviour:
 
@@ -83,11 +131,12 @@ Other important settings:
 - WiFi credentials for direct mode: update `wifiDirectSsid` and
   `wifiDirectPassword`
 
-## 5. Calibration Workflow
+## 6. Calibration Workflow
 
 1. **Set Zero Position Offset**
+   - **Important:** Disconnect the unit from all other units and the I2C bus. Only connect power and the USB serial cable. Serial communication can be unreliable when multiple units are connected due to power draw, I2C bus interference, or electrical noise.
    - Upload `EEPROM_Write_Offset.ino` to a unit
-   - Open Serial Monitor @ 115200 baud
+   - Open Serial Monitor @ 9600 baud (or 57600 if using InteractiveCalibration.ino)
    - Note the current offset, enter new values until the blank flap aligns
      reliably (typically ~100 steps)
    - Reflash `Unit.ino` when satisfied
@@ -102,7 +151,7 @@ Other important settings:
    - Use the web UI text mode or schedule messages
    - Confirm all units respond (watch serial/I²C diagnostics)
 
-## 6. Web Interface & Usage
+## 7. Web Interface & Usage
 
 - **Text mode:** send ad-hoc messages; long messages auto-split or honour `\n`
 - **Countdown / date / clock modes:** switch via the web UI
@@ -111,9 +160,9 @@ Other important settings:
   panel
 - **Log viewer:** shows the last 50 serial log entries and can copy to clipboard
 
-## 7. Debugging Tools
+## 8. Debugging Tools
 
-### 7.1 Web UI diagnostics
+### 8.1 Web UI diagnostics
 
 - **Error status panel:** shows network/JavaScript errors at the top of the page
 - **Page load debug log:** records lifecycle events (DOMContentLoaded, AJAX
@@ -123,19 +172,19 @@ Other important settings:
 - **Startup debug page:** accessible when `DEBUG_ENABLE` is true; shows the full
   boot log before redirecting to the main UI
 
-### 7.2 LED indicator (ESP-01S only)
+### 8.2 LED indicator (ESP-01S only)
 
 - Continuous blinking = critical error (e.g., WiFi connection failed)
 - Requires `ESP01S_LED_ENABLE` to remain `true` and an ESP-01S module (LED on
   GPIO2, active LOW)
 
-### 7.3 Serial logging
+### 8.3 Serial logging
 
 Enable `SERIAL_ENABLE` for verbose firmware logs. Useful during calibration or
 when diagnosing I²C issues (`ServiceFlapFunctions.ino` reports error codes,
 timeouts, sleeping units, etc.).
 
-## 8. Common Issues & Fixes
+## 9. Common Issues & Fixes
 
 | Symptom | Recommendation |
 | --- | --- |
@@ -149,7 +198,7 @@ timeouts, sleeping units, etc.).
 | WiFi unstable | Try static IP or extend antenna (per community notes); verify RSSI via UI |
 | LED indicator off | Confirm module is ESP-01S (original ESP-01 LED conflicts with I²C) |
 
-## 9. Additional Resources
+## 10. Additional Resources
 
 - [`docs/README.md`](./README.md) – documentation hub
 - [`docs/hardware-build.md`](./hardware-build.md) – mechanical assembly steps
