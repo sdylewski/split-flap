@@ -54,3 +54,15 @@ void SerialPrintln(IPAddress value) {
     addToSerialLog(currentSerialLine);
     currentSerialLine = ""; // Clear for next line
 }
+
+// Overload for no arguments (just newline)
+void SerialPrintln() {
+#if SERIAL_ENABLE == true
+    Serial.println();
+#endif
+    // Always log to web interface buffer (complete line)
+    addToSerialLog(currentSerialLine);
+    currentSerialLine = ""; // Clear for next line
+}
+
+// Note: For float with decimal places, use String(value, decimals) first, then SerialPrint()

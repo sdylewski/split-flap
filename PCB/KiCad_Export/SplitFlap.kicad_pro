@@ -1,0 +1,8 @@
+{
+  "meta": {
+    "filename": "SplitFlap.kicad_pro",
+    "version": 1
+  },
+  "board": "SplitFlap.kicad_pcb",
+  "schematic": "SplitFlap.kicad_sch"
+}

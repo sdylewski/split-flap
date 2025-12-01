@@ -9,7 +9,8 @@ units, and operate/debug the split-flap display.
 | --- | --- | --- |
 | ESPMaster (ESP-01S) | `ESPMaster/` | Web server, WiFi, scheduler, diagnostics |
 | Unit firmware (Nano) | `Unit/Unit.ino` | Drives each flap drum |
-| EEPROM offset tool | `EEPROM_Write_Offset/EEPROM_Write_Offset.ino` | Calibrates per-unit zero position |
+| Interactive Calibration | `InteractiveCalibration/InteractiveCalibration.ino` | **Recommended:** Guided calibration tool with automatic offset calculation |
+| EEPROM offset tool | `EEPROM_Write_Offset/EEPROM_Write_Offset.ino` | **Backup:** Basic utility to manually set per-unit zero position |
 
 ## 2. Toolchain & Libraries
 
@@ -60,8 +61,9 @@ units, and operate/debug the split-flap display.
    - For each Arduino Nano, open `Unit/Unit.ino`
    - Select *Arduino Nano* (use *ATmega328P (Old Bootloader)* if uploads fail)
    - Flash the sketch
-4. **EEPROM offset utility**
-   - Upload `EEPROM_Write_Offset.ino` to each unit when calibrating (see below)
+4. **Calibration tools** (see Calibration Workflow section below)
+   - **Recommended:** Use `InteractiveCalibration/InteractiveCalibration.ino` for guided calibration
+   - **Backup:** Use `EEPROM_Write_Offset/EEPROM_Write_Offset.ino` if you need to manually enter a known offset value
 
 ## 4. Over-The-Air (OTA) Updates
 
@@ -71,9 +73,9 @@ OTA allows you to update the ESPMaster firmware wirelessly over WiFi without phy
 
 1. **Enable OTA in code:**
    - In `ESPMaster.ino`, set `#define OTA_ENABLE true`
-   - Optionally change the OTA password (default is `"0424"`):
+   - Optionally change the OTA password (default is `"1234"`):
      ```cpp
-     const char* otaPassword = "0424";  // Change this to your desired password
+     const char* otaPassword = "1234";  // Change this to your desired password
      ```
    - Upload the firmware normally (via USB) with OTA enabled
 
@@ -89,8 +91,12 @@ OTA allows you to update the ESPMaster firmware wirelessly over WiFi without phy
    - Open `ESPMaster/ESPMaster.ino`
    - Make your code changes
    - Go to *Tools → Port* and look for a new port named **"Split-Flap-OTA at [IP address]"**
-   - Select this OTA port (it appears as a network port, not a USB serial port)
+     - Example: "Split-Flap-OTA at 192.168.0.111"
+     - This appears as a network port, not a USB serial port
+     - If you don't see it, try refreshing the port list or ensure OTA mode was activated
+   - Select this OTA port
    - Click *Upload* as normal - the firmware will be uploaded over WiFi
+   - Watch the progress in the Arduino IDE status bar
 
 2. **After upload:**
    - The ESP-01S will automatically reboot
@@ -102,14 +108,25 @@ OTA allows you to update the ESPMaster firmware wirelessly over WiFi without phy
 - **LittleFS updates:** OTA can update the firmware sketch, but **cannot update LittleFS files** (web assets). To update `index.html`, `script.js`, or `style.css`, you must use the USB LittleFS upload method.
 - **First-time setup:** OTA must be enabled and uploaded via USB at least once before it can be used wirelessly.
 - **WiFi required:** OTA only works when the ESP-01S is connected to WiFi. If WiFi is down, you must use USB.
-- **Password protection:** The default password is `"0424"`. Change it in the code for security.
+- **Password protection:** The default password is `"1234"`. Change it in the code for security.
 - **Stability:** OTA works best with strong WiFi signal. Poor signal can cause upload failures or corruption.
 
 ### 4.4 Troubleshooting OTA
 
-- **OTA port not appearing:** Ensure OTA mode was activated via the web interface, and that the ESP-01S is connected to WiFi
-- **Upload fails:** Check WiFi signal strength (RSSI should be better than -80 dBm), try moving closer to the router, or use USB upload instead
-- **Device unresponsive after OTA:** Power cycle the ESP-01S - sometimes a manual reset is needed after OTA updates
+- **OTA port not appearing:**
+  - Ensure OTA mode was activated via the web interface (click "OTA Update" link)
+  - Check that the ESP-01S is on the same WiFi network as your computer
+  - Try refreshing the Arduino IDE port list (close and reopen Tools → Port menu)
+  - Verify OTA is enabled in code (`#define OTA_ENABLE true`)
+- **Upload fails:**
+  - Check WiFi signal strength (RSSI should be better than -80 dBm via web UI)
+  - Ensure no firewall is blocking the connection
+  - Try activating OTA mode again via web interface
+  - Move closer to the router for better signal
+  - As a fallback, use USB upload
+- **Device unresponsive after OTA:**
+  - Power cycle the ESP-01S - sometimes a manual reset is needed after OTA updates
+  - Check serial monitor for error messages
 
 ## 5. Configuration Options
 
@@ -133,13 +150,63 @@ Other important settings:
 
 ## 6. Calibration Workflow
 
-1. **Set Zero Position Offset**
-   - **Important:** Disconnect the unit from all other units and the I2C bus. Only connect power and the USB serial cable. Serial communication can be unreliable when multiple units are connected due to power draw, I2C bus interference, or electrical noise.
-   - Upload `EEPROM_Write_Offset.ino` to a unit
-   - Open Serial Monitor @ 9600 baud (or 57600 if using InteractiveCalibration.ino)
-   - Note the current offset, enter new values until the blank flap aligns
-     reliably (typically ~100 steps)
-   - Reflash `Unit.ino` when satisfied
+### 6.1 Set Zero Position Offset
+
+**Important:** Disconnect the unit from all other units and the I2C bus. Only connect power and the USB serial cable. Serial communication can be unreliable when multiple units are connected due to power draw, I2C bus interference, or electrical noise.
+
+#### Option A: Interactive Calibration (Recommended)
+
+The Interactive Calibration tool provides a guided, step-by-step process that automatically calculates the optimal offset using statistical methods. This is the recommended method for accurate calibration.
+
+**Steps:**
+
+1. **Upload the calibration tool:**
+   - Open `InteractiveCalibration/InteractiveCalibration.ino` in Arduino IDE
+   - Select *Arduino Nano* board (use *ATmega328P (Old Bootloader)* if uploads fail)
+   - Upload the sketch to the unit
+
+2. **Open Serial Monitor:**
+   - Set baud rate to **9600**
+   - Set line ending to **"Newline"** or **"Both NL & CR"**
+   - **Note:** You may need to press the reset button on the Arduino after upload for serial output to work correctly
+
+3. **Follow the interactive prompts:**
+   - The tool will automatically home the unit
+   - It will ask you to type the letter you see (to determine starting position)
+   - For each of 5 measurements, it will rotate slowly - press Enter when the next letter just flips
+   - The tool calculates the optimal offset using linear regression from all measurements
+   - The offset is automatically written to EEPROM when complete
+
+4. **Complete the calibration:**
+   - After the 5 measurements, the tool displays the calculated offset
+   - The offset is saved to EEPROM automatically
+   - You can now upload `Unit.ino` - the calibration is complete
+
+**For detailed instructions, see:** [`docs/interactive-calibration.md`](./interactive-calibration.md)
+
+#### Option B: Manual Entry (Backup Method)
+
+The `EEPROM_Write_Offset.ino` tool is a simple backup method if you already know the offset value or want to manually enter it. This method requires you to determine the correct offset value yourself through trial and error.
+
+**Steps:**
+
+1. **Upload the utility:**
+   - Open `EEPROM_Write_Offset/EEPROM_Write_Offset.ino` in Arduino IDE
+   - Upload to the unit
+
+2. **Open Serial Monitor:**
+   - Set baud rate to **9600**
+   - You may need to restart the serial monitor or press reset to see output
+
+3. **Enter offset value:**
+   - Type a number (typically around 50 steps) and press Enter
+   - Test the unit with `Unit.ino` to see if the blank flap aligns correctly
+   - Repeat with different values until satisfied
+
+4. **Upload Unit.ino:**
+   - Once the offset is correct, upload `Unit.ino` to use the calibrated unit
+
+**Note:** This method is less accurate than Interactive Calibration and requires manual testing to find the correct value.
 2. **Configure Unit Addresses**
    - DIP switch (SW1) bits: SW1=bit3 (value 8)…SW4=bit0 (value 1)
    - Switch **up = ON = 1**, **down = OFF = 0**

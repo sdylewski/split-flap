@@ -14,6 +14,10 @@ void loadValuesFromFileSystem() {
   alignment = readFile(LittleFS, alignmentPath, ALIGNMENT_MODE_LEFT);
   flapSpeed = readFile(LittleFS, flapSpeedPath, "80");
   deviceMode = readFile(LittleFS, deviceModePath, DEVICE_MODE_TEXT);
+  trainStationDelaySeconds = readFile(LittleFS, trainStationDelayPath, "30");
+  randomPhraseList = readFile(LittleFS, randomPhraseListPath, "");
+  randomPhraseMinDelaySeconds = readFile(LittleFS, randomPhraseMinDelayPath, "10");
+  randomPhraseMaxDelaySeconds = readFile(LittleFS, randomPhraseMaxDelayPath, "60");
 
   String scheduledMessagesJson = readFile(LittleFS, scheduledMessagesPath, "");
   if (scheduledMessagesJson != "") {    
@@ -26,6 +30,10 @@ void loadValuesFromFileSystem() {
   SerialPrintln("   Flap Speed: " + flapSpeed);
   SerialPrintln("   Device Mode: " + deviceMode);
   SerialPrintln("   Countdown to Date UNIX: " + countdownToDateUnix);
+  SerialPrintln("   Train Station Delay: " + trainStationDelaySeconds + " seconds");
+  SerialPrintln("   Random Phrase List: " + String(randomPhraseList.length()) + " characters");
+  SerialPrintln("   Random Phrase Min Delay: " + randomPhraseMinDelaySeconds + " seconds");
+  SerialPrintln("   Random Phrase Max Delay: " + randomPhraseMaxDelaySeconds + " seconds");
   SerialPrint("   Scheduled Message Count: ");
   SerialPrintln(scheduledMessages.size());
 }

@@ -13,9 +13,16 @@
   
   Modified by Scott - Added LED debug codes and non-blocking operations for better web server responsiveness
   
-  Version: 1.1.3
-  Changes: Added explicit wait for all motors to stop before delay between words in multi-word strings
-           Ensures motors are fully stopped before starting the 5-second delay between words
+  Version: 1.1.19
+  Changes: Fixed OTA update code bugs and improved compatibility
+           - Fixed handler registration order (handlers must be registered BEFORE begin())
+           - Fixed OTA_AUTH_ERROR message (was incorrectly saying "Finished" instead of "Authentication Failed")
+           - Improved error messages with more descriptive text for each error type
+           - Fixed progress calculation to avoid division by zero
+           - Replaced SerialPrintf with SerialPrint for better compatibility
+           - Fixed HTML syntax errors in OTA page (extra parentheses in href attributes)
+           - Added yield() call in OTA handle loop for better responsiveness
+           - Added handling for unknown OTA error codes
   
   Major Changes from Scientress Fork:
   - Expanded I2C status codes: ESPMaster now interprets detailed unit calibration states for better debugging
@@ -39,14 +46,13 @@
 */
 #define SERIAL_ENABLE       false   //Option to enable serial debug messages
 #define UNIT_CALLS_DISABLE  false   //Option to disable the call to the units so can just debug the ESP with no connections
-#define OTA_ENABLE          false    //Option to enable OTA functionality
-#define UNITS_AMOUNT        8       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
+#define OTA_ENABLE          true    //Option to enable OTA functionality
+#define UNITS_AMOUNT        10       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
 #define SERIAL_BAUDRATE     57600  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
 #define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
-#define DEBUG_ENABLE true  //Enable debug features: startup debug page, error status panel, and serial debug log at bottom of page
+#define DEBUG_ENABLE        true  //Enable debug features: startup debug page, error status panel, and serial debug log at bottom of page
 #define PAGE_LOAD_DEBUG_ENABLE false  //Enable page load debug blocks: browser errors panel and page load debug log at top of page (set to true for troubleshooting page loading issues)
-#define SHOW_UNIT_NUMBERS_ON_STARTUP false  //Display each unit's number (0, 1, 2, etc.) for 1 second on bootup to help identify units
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices
@@ -137,7 +143,7 @@ const char* wifiDirectSsid = "Metolla at 8720";
 const char* wifiDirectPassword = "brotheradso!";
 
 //Change if you want to have an Over The Air (OTA) Password for updates
-const char* otaPassword = "0424";
+const char* otaPassword = "1234";
 
 //Change this to your timezone, use the TZ database name
 //https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
@@ -189,6 +195,10 @@ const char* PARAM_ALIGNMENT = "alignment";
 const char* PARAM_FLAP_SPEED = "flapSpeed";
 const char* PARAM_DEVICEMODE = "deviceMode";
 const char* PARAM_INPUT_TEXT = "inputText";
+const char* PARAM_TRAIN_STATION_DELAY = "trainStationDelay";
+const char* PARAM_RANDOM_PHRASE_LIST = "randomPhraseList";
+const char* PARAM_RANDOM_PHRASE_MIN_DELAY = "randomPhraseMinDelay";
+const char* PARAM_RANDOM_PHRASE_MAX_DELAY = "randomPhraseMaxDelay";
 const char* PARAM_SCHEDULE_ENABLED = "scheduleEnabled";
 const char* PARAM_SCHEDULE_DATE_TIME = "scheduledDateTimeUnix";
 const char* PARAM_SCHEDULE_SHOW_INDEFINITELY = "scheduleShowIndefinitely";
@@ -200,6 +210,8 @@ const char* DEVICE_MODE_TEXT = "text";
 const char* DEVICE_MODE_CLOCK = "clock";
 const char* DEVICE_MODE_DATE = "date";
 const char* DEVICE_MODE_COUNTDOWN = "countdown";
+const char* DEVICE_MODE_TRAIN_STATION = "trainstation";
+const char* DEVICE_MODE_RANDOM_PHRASE = "randomphrase";
 
 //Alignment options
 const char* ALIGNMENT_MODE_LEFT = "left";
@@ -213,6 +225,10 @@ const char* deviceModePath = "/devicemode.txt";
 const char* countdownPath = "/countdown.txt";
 const char* scheduledMessagesPath = "/scheduled-messages.txt";
 const char* debugModePath = "/debugmode.txt";
+const char* trainStationDelayPath = "/trainstationdelay.txt";
+const char* randomPhraseListPath = "/randomphraselist.txt";
+const char* randomPhraseMinDelayPath = "/randomphasemindelay.txt";
+const char* randomPhraseMaxDelayPath = "/randomphasemaxdelay.txt";
 
 //Variables for storing things for checking and use in normal running
 String alignment = "";
@@ -220,6 +236,10 @@ String flapSpeed = "";
 String inputText = "";
 String deviceMode = "";
 String countdownToDateUnix = "";
+String trainStationDelaySeconds = "30"; // Default 30 seconds
+String randomPhraseList = ""; // Comma-separated list of phrases
+String randomPhraseMinDelaySeconds = "10"; // Default 10 seconds
+String randomPhraseMaxDelaySeconds = "60"; // Default 60 seconds
 String lastWrittenText = "";
 String lastReceivedMessageDateTime = "";
 bool alignmentUpdated = false;
@@ -248,7 +268,7 @@ bool isInOtaMode = false;
 // LED Debugging variables
 String debugStatus = "";
 
-// Serial log buffer for web interface (circular buffer, stores last 100 messages)
+// Serial log buffer for web interface (circular buffer, stores last 200 messages)
 #define SERIAL_LOG_SIZE 100
 struct SerialLogEntry {
   String message;
@@ -307,10 +327,10 @@ void continuousBlink(int duration) {
   bool ledState = false;
   while ((millis() - startTime) < duration) {
     if (ledState) {
-      ledOn();
+    ledOn();
     } else {
-      ledOff();
-    }
+    ledOff();
+  }
     ledState = !ledState;
     delay(100); // 100ms on, 100ms off = 5 Hz blink rate
   }
@@ -319,6 +339,9 @@ void continuousBlink(int duration) {
 }
 
 void setup() {
+  // Seed random number generator for train station mode
+  // Use millis() for seeding (will vary based on boot timing)
+  randomSeed(millis());
 #if SERIAL_ENABLE == true
   //Setup so we can see serial messages
   //NOTE: On ESP-01, GPIO 1 is shared between TX (serial) and SDA (I2C), so I2C is disabled when serial is enabled
@@ -329,6 +352,8 @@ void setup() {
   //Note: ESP-01S is recommended over ESP-01 due to better I2C performance
   //On ESP-01, GPIO 1 is also TX, which conflicts with serial, so I2C is only enabled when serial is disabled
   Wire.begin(1, 3); 
+  Wire.setClock(50000); // Set I2C speed to 50kHz (slower = more reliable with long wires and many devices)
+  // Default is usually 100kHz, but 50kHz is more reliable for long buses with 10+ units
   
   //De-activate I2C if debugging the ESP, otherwise serial does not work
   //Wire.begin(D1, D2); //For NodeMCU testing only SDA=D1 and SCL=D2
@@ -337,6 +362,7 @@ void setup() {
 #ifdef FAE_MOD
   //Fae Mod
   Wire.begin(4, 5);
+  Wire.setClock(50000); // Set I2C speed to 50kHz for reliability
 #endif
 
   // Initialize LED for error indication
@@ -356,7 +382,7 @@ void setup() {
   SerialPrintln("#######################################################");
   SerialPrintln("..............Split Flap Display Starting..............");
   SerialPrintln("#######################################################");
-  SerialPrintln("Firmware Version: 1.1.3");
+  SerialPrintln("Firmware Version: 1.1.5");
   SerialPrintln("");
   debugStatus = "Starting";
   SerialPrintln("DEBUG: Status = " + debugStatus);
@@ -551,12 +577,20 @@ void setup() {
       minimalDoc["lastTimeReceivedMessageDateTime"] = lastReceivedMessageDateTime;
       minimalDoc["lastWrittenText"] = lastWrittenText;
       minimalDoc["countdownToDateUnix"] = atol(countdownToDateUnix.c_str());
+      minimalDoc["trainStationDelay"] = atol(trainStationDelaySeconds.c_str());
+      minimalDoc["randomPhraseList"] = randomPhraseList;
+      minimalDoc["randomPhraseMinDelay"] = atol(randomPhraseMinDelaySeconds.c_str());
+      minimalDoc["randomPhraseMaxDelay"] = atol(randomPhraseMaxDelaySeconds.c_str());
       minimalDoc["wifiStatus"] = WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected";
       minimalDoc["wifiRssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
       minimalDoc["wifiIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
       minimalDoc["scheduledMessages"] = JsonArray();
       minimalDoc["wifiSettingsResettable"] = true;
+#if OTA_ENABLE == true
+      minimalDoc["otaEnabled"] = true;
+#else
       minimalDoc["otaEnabled"] = false;
+#endif
       
       // Try to get scheduled messages quickly (with timeout)
       unsigned long beforeScheduled = millis();
@@ -598,31 +632,38 @@ void setup() {
     });
     
     webServer.on("/log", HTTP_GET, [](AsyncWebServerRequest * request) {
-      // Use larger JSON document to handle many log entries (100 entries * ~200 bytes each = ~20KB)
-      StaticJsonDocument<25000> document;
+      // Use JSON document to handle log entries (reduced size to prevent memory issues)
+      StaticJsonDocument<15000> document;
       document["count"] = serialLogCount;
       
-      int startIndex = serialLogCount < SERIAL_LOG_SIZE ? 0 : serialLogIndex;
-      int entriesToReturn = serialLogCount < SERIAL_LOG_SIZE ? serialLogCount : SERIAL_LOG_SIZE;
+      // Initialize logs array even if empty
+      JsonArray logsArray = document["logs"].to<JsonArray>();
       
-      // Limit to last 50 entries to prevent JSON buffer overflow
-      int maxEntries = entriesToReturn > 50 ? 50 : entriesToReturn;
-      int actualStart = entriesToReturn > 50 ? (startIndex + entriesToReturn - 50) % SERIAL_LOG_SIZE : startIndex;
-      
-      for (int i = 0; i < maxEntries; i++) {
-        int idx = (actualStart + i) % SERIAL_LOG_SIZE;
-        String msg = serialLog[idx].message;
+      if (serialLogCount > 0) {
+        int startIndex = serialLogCount < SERIAL_LOG_SIZE ? 0 : serialLogIndex;
+        int entriesToReturn = serialLogCount < SERIAL_LOG_SIZE ? serialLogCount : SERIAL_LOG_SIZE;
         
-        // Truncate very long messages to prevent JSON issues (max 500 chars)
-        if (msg.length() > 500) {
-          msg = msg.substring(0, 497) + "...";
+        // Limit to last 50 entries to prevent JSON buffer overflow and memory issues
+        int maxEntries = entriesToReturn > 50 ? 50 : entriesToReturn;
+        int actualStart = entriesToReturn > 50 ? (startIndex + entriesToReturn - 50) % SERIAL_LOG_SIZE : startIndex;
+        
+        for (int i = 0; i < maxEntries; i++) {
+          int idx = (actualStart + i) % SERIAL_LOG_SIZE;
+          String msg = serialLog[idx].message;
+          
+          // Truncate very long messages to prevent JSON issues (max 300 chars)
+          if (msg.length() > 300) {
+            msg = msg.substring(0, 297) + "...";
+          }
+          
+          JsonObject logEntry = logsArray.add<JsonObject>();
+          logEntry["message"] = msg;
+          logEntry["timestamp"] = serialLog[idx].timestamp;
         }
-        
-        document["logs"][i]["message"] = msg;
-        document["logs"][i]["timestamp"] = serialLog[idx].timestamp;
       }
       
       String jsonString;
+      jsonString.reserve(15000); // Reserve memory to prevent fragmentation
       serializeJson(document, jsonString);
       
       // Check if serialization succeeded
@@ -633,12 +674,16 @@ void setup() {
       }
       
       request->send(200, "application/json", jsonString);
+      // Don't clear jsonString immediately - let AsyncWebServer handle it
+      // The string will be cleaned up automatically after the response is sent
     });
     
     // I2C bus scanner endpoint for diagnostics
     webServer.on("/i2c-scan", HTTP_GET, [](AsyncWebServerRequest * request) {
       SerialPrintln("DEBUG: I2C scan requested");
-      JsonDocument doc;
+      
+      // Use StaticJsonDocument with proper size (16 devices max, ~200 bytes per device)
+      StaticJsonDocument<4000> doc;
       doc["scanTime"] = millis();
       
       int foundCount = 0;
@@ -646,11 +691,15 @@ void setup() {
         Wire.beginTransmission(address);
         byte error = Wire.endTransmission();
         
+        // Add small delay after endTransmission to allow bus to settle
+        delay(2);
+        
         if (error == 0) {
           doc["devices"][foundCount]["address"] = address;
           
           // Try to read status
           Wire.requestFrom(address, 1, 1);
+          delay(2); // Delay after requestFrom
           if (Wire.available()) {
             int status = Wire.read();
             doc["devices"][foundCount]["status"] = status;
@@ -668,7 +717,7 @@ void setup() {
           foundCount++;
         }
         
-        yield();
+        yield(); // Allow web server to process
         delay(10);
       }
       
@@ -676,8 +725,18 @@ void setup() {
       doc["expectedCount"] = UNITS_AMOUNT;
       
       String jsonString;
+      jsonString.reserve(4000); // Reserve memory
       serializeJson(doc, jsonString);
+      
+      // Check if serialization succeeded
+      if (jsonString.length() == 0) {
+        SerialPrintln("ERROR: JSON serialization failed for /i2c-scan endpoint");
+        request->send(500, "application/json", "{\"error\":\"Serialization failed\"}");
+        return;
+      }
+      
       request->send(200, "application/json", jsonString);
+      SerialPrintln("DEBUG: I2C scan completed, found " + String(foundCount) + " devices");
     });
     
     // Unit Diagnostics endpoints removed (/unit-status and /unit-reset) - section removed from UI
@@ -784,12 +843,55 @@ void setup() {
           //HTTP POST device mode value
           if (p->name() == PARAM_DEVICEMODE) {
             String receivedValue = p->value();
-            if (receivedValue == DEVICE_MODE_TEXT || receivedValue == DEVICE_MODE_CLOCK || receivedValue == DEVICE_MODE_DATE || receivedValue == DEVICE_MODE_COUNTDOWN) {
+            if (receivedValue == DEVICE_MODE_TEXT || receivedValue == DEVICE_MODE_CLOCK || receivedValue == DEVICE_MODE_DATE || receivedValue == DEVICE_MODE_COUNTDOWN || receivedValue == DEVICE_MODE_TRAIN_STATION || receivedValue == DEVICE_MODE_RANDOM_PHRASE) {
               newDeviceModeValue = receivedValue;          
             }
             else {
               SerialPrintln("Device Mode provided was not valid. Invalid Value: " + receivedValue); 
               submissionError = true;
+            }
+          }
+          
+          //HTTP POST train station delay value
+          if (p->name() == PARAM_TRAIN_STATION_DELAY) {
+            String receivedDelay = p->value();
+            long delayValue = atol(receivedDelay.c_str());
+            if (delayValue >= 5 && delayValue <= 3600) { // 5 seconds to 1 hour
+              trainStationDelaySeconds = receivedDelay;
+            } else {
+              SerialPrintln("Train Station Delay out of range (5-3600 seconds). Using default 30.");
+            }
+          }
+          
+          //HTTP POST random phrase list
+          if (p->name() == PARAM_RANDOM_PHRASE_LIST) {
+            randomPhraseList = p->value();
+            // Limit length to prevent memory issues (max 2000 characters)
+            if (randomPhraseList.length() > 2000) {
+              randomPhraseList = randomPhraseList.substring(0, 2000);
+              SerialPrintln("Random phrase list truncated to 2000 characters");
+            }
+          }
+          
+          //HTTP POST random phrase min delay
+          if (p->name() == PARAM_RANDOM_PHRASE_MIN_DELAY) {
+            String receivedDelay = p->value();
+            long delayValue = atol(receivedDelay.c_str());
+            if (delayValue >= 5 && delayValue <= 3600) { // 5 seconds to 1 hour
+              randomPhraseMinDelaySeconds = receivedDelay;
+            } else {
+              SerialPrintln("Random Phrase Min Delay out of range (5-3600 seconds). Using default 10.");
+            }
+          }
+          
+          //HTTP POST random phrase max delay
+          if (p->name() == PARAM_RANDOM_PHRASE_MAX_DELAY) {
+            String receivedDelay = p->value();
+            long delayValue = atol(receivedDelay.c_str());
+            if (delayValue >= 5 && delayValue <= 3600) { // 5 seconds to 1 hour
+              randomPhraseMaxDelaySeconds = receivedDelay;
+            } else {
+              SerialPrintln("Random Phrase Max Delay out of range (5-3600 seconds). Using default 60.");
             }
           }
 
@@ -880,6 +982,26 @@ void setup() {
           writeFile(LittleFS, countdownPath, countdownToDateUnix.c_str());
           SerialPrintln("Countdown Date Time Unix Updated: " + countdownToDateUnix);
         }
+        
+        //Save train station delay if provided
+        if (trainStationDelaySeconds != "") {
+          writeFile(LittleFS, trainStationDelayPath, trainStationDelaySeconds.c_str());
+          SerialPrintln("Train Station Delay Updated: " + trainStationDelaySeconds + " seconds");
+        }
+        
+        //Save random phrase settings
+        writeFile(LittleFS, randomPhraseListPath, randomPhraseList.c_str());
+        SerialPrintln("Random Phrase List Updated (" + String(randomPhraseList.length()) + " characters)");
+        
+        if (randomPhraseMinDelaySeconds != "") {
+          writeFile(LittleFS, randomPhraseMinDelayPath, randomPhraseMinDelaySeconds.c_str());
+          SerialPrintln("Random Phrase Min Delay Updated: " + randomPhraseMinDelaySeconds + " seconds");
+        }
+        
+        if (randomPhraseMaxDelaySeconds != "") {
+          writeFile(LittleFS, randomPhraseMaxDelayPath, randomPhraseMaxDelaySeconds.c_str());
+          SerialPrintln("Random Phrase Max Delay Updated: " + randomPhraseMaxDelaySeconds + " seconds");
+        }
 
         //If its a new scheduled message, add it to the backlog and proceed, don't want to change device mode
         //Else, we do want to change the device mode and clear out the input text
@@ -920,8 +1042,8 @@ void setup() {
       html += "<p>Open your Arduino IDE and select the new port in \"Tools\" menu and upload the your sketch as normal!</p>";
       html += "<p>After you have carried out your update, the system will automatically be rebooted. You can go to the main home page after this time by clicking the button below or going to '/'.</p>";
       html += "<p>You can take the system out of this mode by clicking the button to reboot below or going to '/reboot'.</p>";
-      html += "<p><a href=\"http://" + ip.toString() + "\")\">Home</a></p>";
-      html += "<p><a href=\"http://" + ip.toString() + "/reboot\")\">Reboot</a></p>";
+      html += "<p><a href=\"http://" + ip.toString() + "\">Home</a></p>";
+      html += "<p><a href=\"http://" + ip.toString() + "/reboot\">Reboot</a></p>";
       html += "</font>";
       html += "</div>";
 
@@ -936,10 +1058,7 @@ void setup() {
           ArduinoOTA.setPassword(otaPassword);
         }
         
-        SerialPrintln("Starting OTA Mode");
-        ArduinoOTA.begin();
-        delay(100);
-      
+        // Register handlers BEFORE calling begin() - this is required for proper initialization
         ArduinoOTA.onStart([]() {
           LittleFS.end();
           if (ArduinoOTA.getCommand() == U_FLASH) {
@@ -956,28 +1075,43 @@ void setup() {
         });
         
         ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-          SerialPrintf("OTA Progress: %u%%\r", (progress / (total / 100)));
+          // Calculate percentage safely to avoid division by zero
+          if (total > 0) {
+            unsigned int percent = (progress * 100) / total;
+            SerialPrint("OTA Progress: ");
+            SerialPrint(percent);
+            SerialPrintln("%");
+          }
         });
         
         ArduinoOTA.onError([](ota_error_t error) {
-          SerialPrintf("Error[%u]: ", error);
+          SerialPrint("Error[");
+          SerialPrint(error);
+          SerialPrint("]: ");
 
           if (error == OTA_AUTH_ERROR) {
-            SerialPrintln("Finished OTA Update - Rebooting");
+            SerialPrintln("OTA Authentication Failed - Check password");
           }
           else if (error == OTA_BEGIN_ERROR) {
-            SerialPrintln("OTA Begin Failed");
+            SerialPrintln("OTA Begin Failed - Not enough space or invalid partition");
           }
           else if (error == OTA_CONNECT_ERROR) {
-            SerialPrintln("OTA Connect Failed");
+            SerialPrintln("OTA Connect Failed - Network connection lost");
           }
           else if (error == OTA_RECEIVE_ERROR) {
-            SerialPrintln("OTA Receive Failed");
+            SerialPrintln("OTA Receive Failed - Data transfer error");
           }
           else if (error == OTA_END_ERROR) {
-            SerialPrintln("OTA End Failed");
+            SerialPrintln("OTA End Failed - Update validation failed");
+          }
+          else {
+            SerialPrintln("Unknown OTA error");
           }
         });
+        
+        SerialPrintln("Starting OTA Mode");
+        ArduinoOTA.begin();
+        delay(100);
         
         //Put in OTA Mode
         isInOtaMode = true;
@@ -1010,63 +1144,6 @@ void setup() {
 
     delay(250);
     webServer.begin();
-    
-#if SHOW_UNIT_NUMBERS_ON_STARTUP == true && UNIT_CALLS_DISABLE == false
-    // Display each unit's number on bootup to help identify units
-    SerialPrintln("DEBUG: Displaying unit numbers on startup...");
-    bool unitsSent = false;
-    for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
-      // Convert unit number to letter position: '0' is at index 30, '1' at 31, etc.
-      int digitPosition = 30 + unitIndex; // '0' = 30, '1' = 31, ..., '9' = 39
-      if (unitIndex <= 9) { // Only display if unit number is 0-9 (single digit)
-        SerialPrint("DEBUG: Sending unit ");
-        SerialPrint(unitIndex);
-        SerialPrintln(" to display its number");
-        writeToUnit(unitIndex, digitPosition, 10); // Use speed 10 for quick display
-        unitsSent = true;
-        yield(); // Allow web server to process
-        delay(50); // Small delay between units
-      }
-    }
-    
-    // Only wait if we actually sent commands to units
-    if (unitsSent) {
-      // Wait for units to finish displaying their numbers, then hold for 1 second
-      SerialPrintln("DEBUG: Waiting for units to display numbers...");
-      unsigned long waitStart = millis();
-      unsigned long waitTimeout = 3000; // 3 second max wait (reduced from 5s)
-      int waitIterations = 0;
-      while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
-        yield();
-        delay(100);
-        waitIterations++;
-        // Safety: if we've been waiting a while and units aren't responding, break
-        if (waitIterations > 10) {
-          // Check if we're stuck because units aren't responding
-          bool allUnitsStuck = true;
-          for (int i = 0; i < UNITS_AMOUNT; i++) {
-            if (displayState[i] == 0) { // At least one unit is ready
-              allUnitsStuck = false;
-              break;
-            }
-          }
-          if (allUnitsStuck) {
-            SerialPrintln("DEBUG: Units not responding, skipping wait");
-            break;
-          }
-        }
-      }
-      
-      if (millis() - waitStart >= waitTimeout) {
-        SerialPrintln("DEBUG: Timeout waiting for units, continuing anyway");
-      }
-      
-      // Hold the display for 1 second so numbers are visible
-      SerialPrintln("DEBUG: Unit numbers displayed, holding for 1 second...");
-      delay(1000);
-      yield();
-    }
-#endif
     
     // Wait for all units to finish their initial calibration (they calibrate on startup)
     // Units can take 5-30 seconds normally, but units with Hall sensor issues may take up to 60 seconds
@@ -1376,6 +1453,7 @@ void loop() {
   //If System is in OTA, try handle!
   if(isInOtaMode) {
     ArduinoOTA.handle();
+    yield(); // Allow web server and other tasks to process
     delay(1);
   }
 #endif
@@ -1390,18 +1468,20 @@ void loop() {
 
     checkScheduledMessages();
     checkCountdown();
+    checkTrainStation();
+    checkRandomPhrase();
 
     // Skip display updates if a web request is active to prevent blocking
     if (!webRequestActive) {
-      //Mode Selection
-      if (deviceMode == DEVICE_MODE_TEXT || deviceMode == DEVICE_MODE_COUNTDOWN) { 
-        showText(inputText);
-      } 
-      else if (deviceMode == DEVICE_MODE_DATE) {
-        showText(timezone.dateTime(dateFormat));
-      } 
-      else if (deviceMode == DEVICE_MODE_CLOCK) {
-        showText(timezone.dateTime(clockFormat));
+    //Mode Selection
+      if (deviceMode == DEVICE_MODE_TEXT || deviceMode == DEVICE_MODE_COUNTDOWN || deviceMode == DEVICE_MODE_TRAIN_STATION || deviceMode == DEVICE_MODE_RANDOM_PHRASE) { 
+      showText(inputText);
+    } 
+    else if (deviceMode == DEVICE_MODE_DATE) {
+      showText(timezone.dateTime(dateFormat));
+    } 
+    else if (deviceMode == DEVICE_MODE_CLOCK) {
+      showText(timezone.dateTime(clockFormat));
       }
     } else {
       // Web request is active, skip display update to keep web server responsive
@@ -1425,6 +1505,9 @@ void scanI2CBus() {
     Wire.beginTransmission(address);
     byte error = Wire.endTransmission();
     
+    // Add small delay after endTransmission to allow bus to settle
+    delay(2);
+    
     if (error == 0) {
       foundUnits[address] = true;
       foundCount++;
@@ -1435,6 +1518,7 @@ void scanI2CBus() {
       // Try to read status from this address (only for addresses 0-15 which are our units)
       if (address < 16) {
         Wire.requestFrom(address, 1, 1);
+        delay(2); // Delay after requestFrom
         if (Wire.available()) {
           int status = Wire.read();
           unitStatus[address] = status;
@@ -1587,7 +1671,7 @@ String getCurrentSettingValues() {
       rssiSum += WiFi.RSSI();
       if (i < rssiReadings - 1) {
         delay(5); // Reduced from 10ms
-        yield();
+      yield();
       }
     }
     document["wifiRssi"] = rssiSum / rssiReadings;
@@ -1621,7 +1705,7 @@ String getCurrentSettingValues() {
     
     // Yield every 5 messages to keep web server responsive, or on every message if < 10 total
     if (scheduledMessageIndex % 5 == 0 || scheduledCount < 10) {
-      yield(); // Allow web server to process requests during loop
+    yield(); // Allow web server to process requests during loop
     }
   }
   unsigned long afterScheduled = millis();
