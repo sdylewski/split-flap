@@ -65,6 +65,12 @@ form.onsubmit = function () {
 				document.getElementById('inputHiddenCountdownDateTimeUnix').value = time;
 
 				break;
+			case "trainstation":
+				// Train station mode - delay value is already in the form, no conversion needed
+				break;
+			case "randomphrase":
+				// Random phrase mode - phrase list and delays are already in the form, no conversion needed
+				break;
 		}
 	}
 }
@@ -220,12 +226,21 @@ function loadPage() {
 					
 					// Check if page load debug is enabled
 					if (responseObject.pageLoadDebugEnabled !== undefined) {
+						var wasEnabled = pageLoadDebugEnabled;
 						pageLoadDebugEnabled = responseObject.pageLoadDebugEnabled;
 						// Hide/show debug blocks based on flag
 						var errorLog = document.getElementById("pageLoadErrorLog");
 						var debugLog = document.getElementById("debugLogViewer");
 						if (errorLog) errorLog.style.display = pageLoadDebugEnabled ? "block" : "none";
 						if (debugLog) debugLog.style.display = pageLoadDebugEnabled ? "block" : "none";
+						
+						// If just enabled, start loading the debug log
+						if (pageLoadDebugEnabled && !wasEnabled) {
+							loadDebugLog();
+							if (!debugLogInterval) {
+								debugLogInterval = setInterval(loadDebugLog, 500); // Refresh every 500ms
+							}
+						}
 						
 						// If disabled, stop the debug log interval
 						if (!pageLoadDebugEnabled && debugLogInterval) {
@@ -234,6 +249,8 @@ function loadPage() {
 						}
 					}
 						setCountdownDate(responseObject.countdownToDateUnix);
+						setTrainStationDelay(responseObject.trainStationDelay || 30);
+						setRandomPhraseSettings(responseObject.randomPhraseList || "", responseObject.randomPhraseMinDelay || 10, responseObject.randomPhraseMaxDelay || 60);
 						setLastReceivedMessage(responseObject.lastTimeReceivedMessageDateTime);
 						setWiFiStatus(responseObject.wifiStatus, responseObject.wifiRssi, responseObject.wifiIp);
 						showHideResetWifiSettingsAction(responseObject.wifiSettingsResettable);
@@ -351,6 +368,12 @@ function setSavedMode(mode) {
 		case "countdown":
 			document.getElementById("modeCountdown").checked = true;
 			break;
+		case "trainstation":
+			document.getElementById("modeTrainStation").checked = true;
+			break;
+		case "randomphrase":
+			document.getElementById("modeRandomPhrase").checked = true;
+			break;
 	}
 
 	setDeviceModeTab(mode);
@@ -436,6 +459,30 @@ function setConnectedUnitCount(connected, expected) {
 }
 
 //Sets the version on the UI just for awareness
+function setTrainStationDelay(delaySeconds) {
+	var inputTrainStationDelay = document.getElementById("inputTrainStationDelay");
+	if (inputTrainStationDelay !== null) {
+		inputTrainStationDelay.value = delaySeconds;
+	}
+}
+
+function setRandomPhraseSettings(phraseList, minDelay, maxDelay) {
+	var inputRandomPhraseList = document.getElementById("inputRandomPhraseList");
+	if (inputRandomPhraseList !== null) {
+		inputRandomPhraseList.value = phraseList;
+	}
+	
+	var inputRandomPhraseMinDelay = document.getElementById("inputRandomPhraseMinDelay");
+	if (inputRandomPhraseMinDelay !== null) {
+		inputRandomPhraseMinDelay.value = minDelay;
+	}
+	
+	var inputRandomPhraseMaxDelay = document.getElementById("inputRandomPhraseMaxDelay");
+	if (inputRandomPhraseMaxDelay !== null) {
+		inputRandomPhraseMaxDelay.value = maxDelay;
+	}
+}
+
 function setCountdownDate(dateUnix) {
 	//Set date fields to be a minimum of tomorrows date
 	var currentCountdownDate = document.getElementById('inputCountdownDateTime');
@@ -548,9 +595,11 @@ function showHideResetWifiSettingsAction(isWifiApMode) {
 }
 
 function showHideOtaUpdateAction(isOtaEnabled) {
+	var linkActionOtaUpdate = document.getElementById("linkActionOtaUpdate");
 	if (!isOtaEnabled) {
-		var linkActionOtaUpdate = document.getElementById("linkActionOtaUpdate");
 		linkActionOtaUpdate.classList.add("hidden");
+	} else {
+		linkActionOtaUpdate.classList.remove("hidden");
 	}
 }
 
@@ -716,26 +765,38 @@ function escapeHtml(text) {
 
 // Load and display debug log (for page load debugging)
 function loadDebugLog() {
+	if (!pageLoadDebugEnabled) return; // Don't load if disabled
+	
 	var xhrRequest = new XMLHttpRequest();
+	var requestStartTime = Date.now();
+	
 	xhrRequest.onreadystatechange = function () {
 		if (this.readyState == 4) {
+			var elapsed = ((Date.now() - requestStartTime) / 1000).toFixed(1);
 			if (this.status == 200) {
 				try {
 					var responseObject = JSON.parse(this.responseText);
 					displayDebugLog(responseObject);
+					logPageLoadStatus("/log request completed successfully in " + elapsed + "s", false);
 				} catch (e) {
-					logPageLoadStatus("ERROR: Failed to parse /log response: " + e.message, true);
+					logPageLoadStatus("ERROR: Failed to parse /log response: " + e.message + " (after " + elapsed + "s)", true);
 				}
 			} else {
-				logPageLoadStatus("ERROR: /log request failed with status " + this.status, true);
+				logPageLoadStatus("ERROR: /log request failed with status " + this.status + " (after " + elapsed + "s)", true);
 			}
 		}
 	};
 	
 	xhrRequest.onerror = function() {
-		logPageLoadStatus("ERROR: Network error on /log request", true);
+		var elapsed = ((Date.now() - requestStartTime) / 1000).toFixed(1);
+		logPageLoadStatus("ERROR: Network error on /log request (after " + elapsed + "s) - Check if ESP8266 is responding", true);
+	};
+	
+	xhrRequest.ontimeout = function() {
+		logPageLoadStatus("ERROR: /log request timed out after 10s", true);
 	};
 
+	xhrRequest.timeout = 10000; // 10 second timeout
 	xhrRequest.open("GET", "/log", true);
 	xhrRequest.send();
 }
@@ -753,7 +814,7 @@ function displayDebugLog(logData) {
 	}
 	
 	// During page load, show full log. After page loads, show only last 30 messages
-	var startIdx = isPageLoading ? 0 : Math.max(0, logData.logs.length - 30);
+	var startIdx = isPageLoading ? 0 : Math.max(0, logData.logs.length - 100);
 	var html = "";
 	for (var i = startIdx; i < logData.logs.length; i++) {
 		var logEntry = logData.logs[i];

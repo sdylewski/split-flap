@@ -110,6 +110,16 @@
 							<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeText" name="deviceMode" value="text" />
 							<label for="modeText">Text Mode</label>
 						</p>
+
+						<p>
+							<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeTrainStation" name="deviceMode" value="trainstation" />
+							<label for="modeTrainStation">Train Station Mode</label>
+						</p>
+
+						<p>
+							<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeRandomPhrase" name="deviceMode" value="randomphrase" />
+							<label for="modeRandomPhrase">Random Phrase Mode</label>
+						</p>
 						
 						<div id="tab-text" class="tab">
 							<p>
@@ -148,6 +158,42 @@
 								<br>
 								<input type="date" id="inputCountdownDateTime" name="countdownDateTime">
 								<input type="hidden" id="inputHiddenCountdownDateTimeUnix" name="countdownDateTimeUnix" value="0" />
+							</p>
+						</div>
+
+						<div id="tab-trainstation" class="tab hidden">
+							<p>
+								<label for="inputTrainStationDelay">Time Between Changes (seconds)</label>
+								<br>
+								<input type="number" id="inputTrainStationDelay" name="trainStationDelay" min="5" max="3600" value="30" />
+								<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 30)</span>
+							</p>
+							<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+								Displays random famous train stations from Europe and the US. The display will automatically cycle through stations at the specified interval.
+							</p>
+						</div>
+
+						<div id="tab-randomphrase" class="tab hidden">
+							<p>
+								<label for="inputRandomPhraseList">Phrases (comma-separated)</label>
+								<br>
+								<textarea id="inputRandomPhraseList" name="randomPhraseList" rows="6" style="width: 100%; font-family: monospace;" placeholder="Enter phrases separated by commas, e.g.: Hello World, Good Morning, Have a Nice Day"></textarea>
+								<span style="font-size: 0.9em; color: #888;">Enter multiple phrases separated by commas. Each phrase will be displayed randomly.</span>
+							</p>
+							<p style="margin-top: 1.5em;">
+								<label for="inputRandomPhraseMinDelay">Minimum Time Between Changes (seconds)</label>
+								<br>
+								<input type="number" id="inputRandomPhraseMinDelay" name="randomPhraseMinDelay" min="5" max="3600" value="10" />
+								<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 10)</span>
+							</p>
+							<p>
+								<label for="inputRandomPhraseMaxDelay">Maximum Time Between Changes (seconds)</label>
+								<br>
+								<input type="number" id="inputRandomPhraseMaxDelay" name="randomPhraseMaxDelay" min="5" max="3600" value="60" />
+								<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 60)</span>
+							</p>
+							<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+								Displays random phrases from your list. The time between changes will be randomly selected between the minimum and maximum values you specify.
 							</p>
 						</div>
 		

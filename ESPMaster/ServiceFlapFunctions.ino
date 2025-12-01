@@ -178,7 +178,16 @@ void writeToUnit(int address, int letter, int flapSpeed) {
 
     Wire.write(sendArray[index]);
   }
-  Wire.endTransmission(); //send values to unit
+  byte error = Wire.endTransmission(); //send values to unit
+  
+  // Add delay to allow bus to settle and unit to process command
+  if (error == 0) {
+    delay(2); // 2ms delay after successful transmission
+  } else {
+    delay(5); // Longer delay on error to let bus recover
+  }
+  
+  yield(); // Allow web server to process
 }
 
 //Checks if unit in display is currently moving
@@ -186,6 +195,14 @@ bool isDisplayMoving() {
   //Request all units moving state and write to array
   for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
     displayState[unitIndex] = checkIfMoving(unitIndex);
+    
+    // Add delay between I2C requests to prevent bus congestion
+    // Only delay if not the last unit (optimization)
+    if (unitIndex < UNITS_AMOUNT - 1) {
+      delay(5); // 5ms delay between each unit check
+      yield(); // Allow web server to process
+    }
+    
     if (displayState[unitIndex] == 1) {
       SerialPrint("Unit ");
       SerialPrint(unitIndex);
@@ -207,40 +224,67 @@ bool isDisplayMoving() {
 
 //Checks if single unit is moving
 int checkIfMoving(int address) {
-  Wire.requestFrom(address, ANSWER_SIZE, 1);
+  const int MAX_RETRIES = 3;
+  int retryCount = 0;
+  int active = -1;
   
-  if (Wire.available() == 0) {
-    SerialPrint("ERROR: Unit ");
-    SerialPrint(address);
-    SerialPrintln(" - No response (no data available)");
+  while (retryCount < MAX_RETRIES) {
+    Wire.requestFrom(address, ANSWER_SIZE, 1);
     
-    // Check I2C error
-    Wire.beginTransmission(address);
-    byte error = Wire.endTransmission();
-    SerialPrint("  I2C error code: ");
-    SerialPrintln(error);
-    
-    if (error == 2) {
-      SerialPrintln("  -> Address received NACK (device not found)");
-    } else if (error == 3) {
-      SerialPrintln("  -> Data received NACK");
-    } else if (error == 4) {
-      SerialPrintln("  -> Unknown I2C error");
-    } else if (error == 5) {
-      SerialPrintln("  -> Timeout");
+    if (Wire.available() > 0) {
+      active = Wire.read();
+      break; // Success, exit retry loop
     }
     
-    return -1;
+    // No response - check I2C error
+    Wire.beginTransmission(address);
+    byte error = Wire.endTransmission();
+    
+    if (error == 0) {
+      // Device responded but no data - might be waking from sleep
+      delay(10); // Wait for unit to wake up
+      retryCount++;
+      continue;
+    }
+    
+    // Log error only on last retry to reduce noise
+    if (retryCount == MAX_RETRIES - 1) {
+      SerialPrint("ERROR: Unit ");
+      SerialPrint(address);
+      SerialPrintln(" - No response after retries");
+      SerialPrint("  I2C error code: ");
+      SerialPrintln(error);
+      
+      if (error == 2) {
+        SerialPrintln("  -> Address received NACK (device not found or sleeping)");
+      } else if (error == 3) {
+        SerialPrintln("  -> Data received NACK");
+      } else if (error == 4) {
+        SerialPrintln("  -> Unknown I2C error");
+      } else if (error == 5) {
+        SerialPrintln("  -> Timeout");
+      }
+    }
+    
+    retryCount++;
+    if (retryCount < MAX_RETRIES) {
+      delay(10); // Wait before retry
+      yield(); // Allow web server to process
+    }
   }
   
-  int active = Wire.read();
+  if (active == -1) {
+    return -1; // Failed after retries
+  }
   
   // More detailed logging for debugging calibration issues
   static unsigned long lastStatusTime[16] = {0};
   static int lastStatus[16] = {-2};
   static unsigned long statusStartTime[16] = {0};
+  static int readCount[16] = {0}; // Track how many times we've successfully read from each unit
   
   unsigned long currentTime = millis();
+  readCount[address]++; // Increment successful read counter
   
   // Track how long unit has been in current state
   if (lastStatus[address] != active) {
@@ -296,7 +340,18 @@ int checkIfMoving(int address) {
   } else {
     SerialPrint("UNKNOWN");
   }
-  SerialPrintln(")");
+  SerialPrint(")");
+  
+  // Add I2C diagnostic: show read count to verify we're reading fresh values
+  // Only show this periodically to avoid log spam
+  static unsigned long lastDiagnosticTime[16] = {0};
+  if (currentTime - lastDiagnosticTime[address] > 10000) { // Every 10 seconds
+    SerialPrint(" [I2C reads: ");
+    SerialPrint(readCount[address]);
+    SerialPrint("]");
+    lastDiagnosticTime[address] = currentTime;
+  }
+  SerialPrintln();
 
   if (active == -1) {
     SerialPrint("WARNING: Unit ");

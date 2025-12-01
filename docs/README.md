@@ -45,7 +45,8 @@ below and then dive into the topic that is most relevant for you.
 | `docs/` | Documentation hub (this folder) |
 | `ESPMaster/` | ESP-01S firmware and web assets |
 | `Unit/` | Arduino Nano firmware for each flap unit |
-| `EEPROM_Write_Offset/` | Utility sketch to calibrate per-unit offsets |
+| `EEPROM_Write_Offset/` | Basic utility sketch to manually set per-unit offsets |
+| `InteractiveCalibration/` | Interactive calibration tool with step-by-step guidance |
 | `PCB/` | Schematics, Gerbers and pick-and-place files |
 | `Images/` | Reference photos used by the docs |
 
@@ -56,6 +57,7 @@ below and then dive into the topic that is most relevant for you.
 | [`printing.md`](./printing.md) | BOM, screw list, printed part manifest and flap printing tips |
 | [`hardware-build.md`](./hardware-build.md) | PCB soldering, unit assembly and enclosure build |
 | [`software.md`](./software.md) | Firmware setup, calibration, DIP switches, debugging and usage |
+| [`interactive-calibration.md`](./interactive-calibration.md) | Guide for using the Interactive Calibration tool |
 | [`SplitFlapInstructions.md`](./SplitFlapInstructions.md) | Legacy PDF content converted to Markdown for archival/reference |
 
 ## Feature Highlights
