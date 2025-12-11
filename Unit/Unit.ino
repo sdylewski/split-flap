@@ -1,10 +1,11 @@
 /*********
   Split Flap Arduino Nano Unit
-  Version: 1.1.1
-  Changes: Fixed calibration logic to handle case where unit starts at marker position (prevents double offset on reboot)
+  Version: 1.2.0
+  Changes: Forward-only rotation - all backward movements replaced with forward wrap-around to prevent mechanical issues
   
   Version History:
-  - 1.1.1: Fixed calibration to move away from marker if already at it on startup (prevents double offset)
+  - 1.2.0: Forward-only rotation - replaced all backward movements with forward wrap-around, updated calibration to use forward-only positioning
+  - 1.1.1: Fixed calibration to move away from marker if already at it on startup (prevents double offset), added trigger width measurement and center positioning
   - 1.1.0: Added expanded I2C status codes (0=ready, 1=busy, 2=cal_searching, 3=cal_offset, 4=cal_error, -1=sleeping)
   
   Major Changes from Scientress Fork:
@@ -15,7 +16,7 @@
   - Fixed calibration startup: Handles case where unit reboots while already at marker position
 *********/
 
-//#define SERIAL_ENABLE // uncomment for serial debug communication
+#define SERIAL_ENABLE // uncomment for serial debug communication
 //#define TEST_ENABLE   // uncomment for Test mode. Rotates through a few character to make sure unit is working. These characters should be displayed in the correct order: " ", "Z", "A", "U", "N", "?", "0", "1", "2", "9"
 
 #include <Arduino.h>
@@ -118,7 +119,7 @@ void setup() {
   Serial.println("starting unit");
   SerialPrintTimestamp();
   Serial.print("Firmware Version: ");
-  Serial.println("1.1.1");
+  Serial.println("1.2.0");
   SerialPrintTimestamp();
   Serial.print("I2CAddress: ");
   Serial.println(i2cAddress);
@@ -409,7 +410,7 @@ int calibrate(bool initialCalibration) {
         Serial.println(F("Already at marker at startup, moving 50 steps away to re-find it"));
 #endif
         i = 50;
-        stepper.step(ROTATIONDIRECTION * 50); //move 50 steps to get out of scope of hall
+        stepper.step(ROTATIONDIRECTION * 50); //move 50 steps in normal rotation direction
         // Continue loop - next iteration will check Hall sensor again after moving
         i++; // Increment so we don't hit this check again
         continue; // Re-check Hall sensor after moving away
@@ -420,24 +421,81 @@ int calibrate(bool initialCalibration) {
     if (currentHallValue == 1) {
       //not reached yet - still searching for marker
       currentlyrotating = 2; // Keep status as "calibrating (searching)"
-      stepper.step(ROTATIONDIRECTION * 1);
+      stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction only
     }
     else if (currentHallValue == 0 && i > 0) {
-      //reached marker (and we've moved at least 1 step, so we found it properly)
+      //reached marker LEADING EDGE (and we've moved at least 1 step, so we found it properly)
       // The i > 0 check ensures we didn't just start at the marker (prevents double offset)
-      reachedMarker = true;
-      currentlyrotating = 3; // Status: calibrating (applying offset)
-      stepper.step(ROTATIONDIRECTION * calOffset);
-      displayedLetter = 0;
-      missedSteps = 0;
+      // STOP HERE IMMEDIATELY - this is the marker edge position (leading edge, start of magnet)
+      // This matches the calibration tool which calculates offset from the leading edge
+      // We do NOT move forward to measure trigger width - we stop immediately at the leading edge
+      
 #ifdef SERIAL_ENABLE
-      unsigned long totalTime = millis() - calStartTime;
+      unsigned long markerFoundTime = millis() - calStartTime;
       SerialPrintTimestamp();
       Serial.print(F("*** MARKER FOUND *** at step: "));
       Serial.print(i);
       Serial.print(F(" | Time: "));
+      Serial.print(markerFoundTime);
+      Serial.println(F("ms - Stopped at leading edge (start of magnet)"));
+      SerialPrintTimestamp();
+      Serial.println(F("(Staying at leading edge - no forward movement to measure trigger width)"));
+#endif
+      
+      reachedMarker = true;
+      currentlyrotating = 3; // Status: calibrating (applying offset)
+      
+#ifdef SERIAL_ENABLE
+      SerialPrintTimestamp();
+      Serial.print(F("Marker edge found at step: "));
+      Serial.println(i);
+      SerialPrintTimestamp();
+      Serial.print(F("Applying calibration offset: "));
+      Serial.print(calOffset);
+      Serial.print(F(" steps in ROTATIONDIRECTION ("));
+      Serial.print(ROTATIONDIRECTION);
+      Serial.println(F(")"));
+#endif
+      
+      // Apply offset: calOffset is steps in ROTATIONDIRECTION, just like scientress version
+      // Apply directly - no conversion needed, no wrap-around
+      // ROTATIONDIRECTION = -1, so ROTATIONDIRECTION * calOffset moves in ROTATIONDIRECTION
+      stepper.step(ROTATIONDIRECTION * calOffset); // Normal rotation direction only
+      
+      // Update step counter after applying offset
+      i = i + (ROTATIONDIRECTION * calOffset);
+      // Wrap around if negative (shouldn't happen, but handle it)
+      if (i < 0) {
+        i = i + STEPS;
+      }
+      // Wrap around if beyond one rotation
+      if (i >= STEPS) {
+        i = i - STEPS;
+      }
+      
+      displayedLetter = 0;
+      missedSteps = 0;
+      
+#ifdef SERIAL_ENABLE
+      unsigned long totalTime = millis() - calStartTime;
+      SerialPrintTimestamp();
+      Serial.print(F("Offset applied | Final step position: "));
+      Serial.print(i);
+      Serial.print(F(" | Total time: "));
       Serial.print(totalTime);
       Serial.println(F("ms"));
+      SerialPrintTimestamp();
+      Serial.print(F("Expected position after offset: CENTER of blank flap (index 0, '"));
+      Serial.print(letters[0]);
+      Serial.println(F("')"));
+      SerialPrintTimestamp();
+      Serial.print(F("(Marker edge at step "));
+      Serial.print(i - (ROTATIONDIRECTION * calOffset));
+      Serial.print(F(" + offset "));
+      Serial.print(calOffset);
+      Serial.print(F(" steps = step "));
+      Serial.print(i);
+      Serial.println(F(")"));
       SerialPrintTimestamp();
       Serial.println(F("revolver calibrated"));
 #endif
