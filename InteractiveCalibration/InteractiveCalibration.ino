@@ -1,11 +1,14 @@
 /*********
   Interactive Flap Calibration Tool
-  Version: 1.0.20
-  Changes: Updated homing speed to match Unit.ino (speed 10 instead of 5)
-           - Homing speed now matches the actual unit firmware for consistency
-           - Ensures calibration tool behaves the same as production firmware during homing
+  Version: 1.0.21
+  Changes: Updated homing to stop at marker edge (no backup) - matches Unit.ino v1.2.0 behavior
+           - Removed backup-to-center logic to match production firmware
+           - Both calibration tool and Unit.ino now use same reference point (edge) for offset calculation
+           - Prevents mismatch between calibration offset and application offset
   
   Version History:
+  - 1.0.21: Updated to stop at marker edge (no backup) to match Unit.ino v1.2.0
+  - 1.0.20: Updated homing speed to match Unit.ino (speed 10 instead of 5)
   - 1.0.2: Improved homing function with debug output and proper logic matching Unit.ino behavior
   - 1.0.1: Fixed serial initialization to match EEPROM_Write_Offset.ino pattern (removed delay, removed F() macros)
   - 1.0.0: Initial version - Interactive calibration tool for finding optimal flap offset
@@ -76,6 +79,9 @@ boolean newData = false;
 // Flap characters (same as Unit.ino)
 const char letters[] = {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', 'Ä', 'Ö', 'Ü', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '.', '-', '?', '!'};
 
+// Forward declarations
+void homeUnit();
+
 void setup() {
   Serial.begin(BAUDRATE);
   delay(500); // Give serial time to stabilize
@@ -107,7 +113,7 @@ void setup() {
   stepper.setSpeed(10); // Set initial speed (matches Unit.ino homing speed)
   delay(200);
   
-  // Home the unit first
+  // Home the unit first (start fresh calibration)
   Serial.println("Starting homing sequence...");
   delay(100);
   homeUnit();
@@ -133,6 +139,7 @@ void loop() {
 void homeUnit() {
   // Simple homing: rotate until Hall sensor detects magnet (matches Unit.ino logic)
   // Use same speed as Unit.ino (stepperSpeed = 10)
+  // Don't apply offset - start fresh for calibration
   stepper.setSpeed(10);
   delay(100);
   
@@ -143,17 +150,17 @@ void homeUnit() {
   Serial.println(" (1=no magnet, 0=magnet)");
   delay(100);
   
-  // Move away from marker if already on it (same as Unit.ino)
+  // Move away from marker if already on it (same as Unit.ino/scientress version)
   if (initialHallValue == 0) {
     Serial.println("At marker, moving 50 steps away...");
     delay(100);
     for (int i = 0; i < 50; i++) {
-      stepper.step(ROTATIONDIRECTION * 1);
+      stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction (same as scientress)
     }
     delay(200);
   }
   
-  // Rotate until marker found (Hall sensor goes from 1 to 0)
+  // Rotate until marker found (Hall sensor goes from 1 to 0) - same direction as scientress version
   Serial.println("Searching for marker...");
   Serial.flush();
   delay(100);
@@ -173,8 +180,8 @@ void homeUnit() {
     int currentHallValue = digitalRead(HALLPIN);
     
     if (currentHallValue == 1) {
-      // No magnet detected yet - keep searching
-      stepper.step(ROTATIONDIRECTION * 1);
+      // No magnet detected yet - keep searching (same direction as scientress version)
+      stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction
       steps++;
       
       // Log progress every 500 steps or first few steps
@@ -192,100 +199,16 @@ void homeUnit() {
       // Magnet detected! (and we've moved at least 1 step to ensure we found it)
       Serial.print("*** Marker found at step ");
       Serial.print(steps);
-      Serial.println(" - Measuring Hall sensor trigger width...");
+      Serial.println(" - Stopped at leading edge (start of magnet)");
+      Serial.println("(Staying at leading edge - no forward movement to measure trigger width)");
       Serial.flush();
       
-      // Measure Hall sensor trigger width (how many steps it stays triggered)
-      int triggerStartStep = steps;
-      int totalStepsMoved = 0;
-      int triggerWidth = 0; // Only count steps where sensor is actually triggered
-      int consecutiveTriggered = 0;
-      int maxConsecutiveTriggered = 0;
-      int triggerStartPosition = -1; // Position where trigger region starts
-      int triggerEndPosition = -1;   // Position where trigger region ends
+      // STOP HERE - this is the marker edge position (leading edge, start of magnet)
+      // We do NOT move forward to measure trigger width - we stop immediately at the leading edge
+      // This matches Unit.ino behavior - both stop at the leading edge for consistent offset calculation
       
-      // Continue moving slowly and measuring trigger width
-      // Move up to 100 steps to measure the full trigger region
-      for (int measureStep = 0; measureStep < 100; measureStep++) {
-        stepper.step(ROTATIONDIRECTION * 1);
-        steps++;
-        totalStepsMoved++;
-        
-        int hallReading = digitalRead(HALLPIN);
-        if (hallReading == 0) {
-          // Sensor is triggered
-          if (triggerStartPosition == -1) {
-            triggerStartPosition = measureStep; // Mark start of trigger region
-          }
-          triggerWidth++; // Only count steps where sensor is triggered
-          consecutiveTriggered++;
-          if (consecutiveTriggered > maxConsecutiveTriggered) {
-            maxConsecutiveTriggered = consecutiveTriggered;
-          }
-          triggerEndPosition = measureStep; // Update end of trigger region
-        } else {
-          // Sensor is not triggered
-          consecutiveTriggered = 0;
-          // If we were in a trigger region and now we're not, and we've moved enough, we've passed it
-          if (triggerEndPosition != -1 && measureStep > triggerEndPosition + 10) {
-            // We've passed the magnet - back up to the center of the trigger region
-            int triggerCenter = triggerStartPosition + (triggerWidth / 2);
-            int stepsToBackup = totalStepsMoved - triggerCenter;
-            if (stepsToBackup > 0) {
-              Serial.print("Backing up ");
-              Serial.print(stepsToBackup);
-              Serial.println(" steps to center of trigger region...");
-              for (int i = 0; i < stepsToBackup; i++) {
-                stepper.step(-ROTATIONDIRECTION * 1);
-                steps--;
-              }
-            }
-            break;
-          }
-        }
-        
-        delay(5); // Small delay for accurate measurement
-      }
-      
-      // If we didn't exit early, we may have measured the full region
-      // In that case, triggerWidth is already correct
-      
-      // Report Hall sensor diagnostics
-      Serial.println();
-      Serial.println("=== Hall Sensor Diagnostics ===");
-      Serial.print("Trigger start step: ");
-      Serial.println(triggerStartStep);
-      Serial.print("Trigger width (steps): ");
-      Serial.println(triggerWidth);
-      Serial.print("Max consecutive triggered steps: ");
-      Serial.println(maxConsecutiveTriggered);
-      Serial.print("Trigger width as % of steps per flap: ");
-      float triggerPercent = (float)triggerWidth / STEPS_PER_FLAP * 100.0;
-      Serial.print(triggerPercent, 1);
-      Serial.println("%");
-      
-      // Store Hall sensor diagnostics for final summary
-      hallTriggerWidth = triggerWidth;
-      hallMaxConsecutiveTriggered = maxConsecutiveTriggered;
-      hallTriggerPercent = triggerPercent;
-      
-      // Diagnostic interpretation
-      Serial.println();
-      Serial.println("Diagnostic Interpretation:");
-      if (triggerWidth < 5) {
-        hallDiagnosticStatus = "WARNING: Very narrow trigger (< 5 steps) - magnet may be weak or misaligned";
-        Serial.print("  ");
-        Serial.println(hallDiagnosticStatus);
-      } else if (triggerWidth < 10) {
-        hallDiagnosticStatus = "CAUTION: Narrow trigger (5-10 steps) - may cause timing issues";
-        Serial.print("  ");
-        Serial.println(hallDiagnosticStatus);
-      } else {
-        hallDiagnosticStatus = "OK: Trigger width acceptable";
-        Serial.print("  ");
-        Serial.println(hallDiagnosticStatus);
-      }
-      Serial.println();
+      // Reset totalStepsFromHome to 0 at the leading edge position (this is our reference point)
+      totalStepsFromHome = 0;
       
       stopMotor();
       delay(100);
@@ -304,6 +227,8 @@ void homeUnit() {
   
   // Make sure motor is stopped
   stopMotor();
+  
+  // Don't apply offset - start fresh for calibration
   
   // Found home - reset position counter
   totalStepsFromHome = 0;
@@ -358,7 +283,7 @@ void goToFlapIndex(int targetIndex) {
   startMotor();
   
   for (int i = 0; i < steps; i++) {
-    stepper.step(ROTATIONDIRECTION * 1);
+    stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction (same as scientress)
     totalStepsFromHome += 1;
   }
   
@@ -399,7 +324,7 @@ void goToFlapIndexFastThenSlow(int targetIndex, int slowRegionSteps) {
     stepper.setSpeed(fastSpeed);
     startMotor();
     for (int i = 0; i < fastSteps; i++) {
-      stepper.step(ROTATIONDIRECTION * 1);
+      stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction (same as scientress)
       totalStepsFromHome += 1;
     }
     stopMotor();
@@ -456,7 +381,7 @@ void goToFlapIndexFastThenSlow(int targetIndex, int slowRegionSteps) {
       }
       
       // Move one step
-      stepper.step(ROTATIONDIRECTION * 1);
+      stepper.step(ROTATIONDIRECTION * 1); // Normal rotation direction (same as scientress)
       totalStepsFromHome += 1;
       stepsMoved++;
     }
@@ -576,7 +501,7 @@ void processUserInput() {
   Serial.print((int)(offset * STEPS_PER_FLAP));
   Serial.println(F(" steps)"));
   
-  // Record the current position for the flap the user sees
+  // Record the current position for the flap the user sees (first measurement only)
   if (measurementCount == 0) {
     // First measurement - record current position and which flap it is
     firstMeasurementFlapIndex = seenIndex;
@@ -589,37 +514,33 @@ void processUserInput() {
     Serial.print(F("' (flap index "));
     Serial.print(seenIndex);
     Serial.println(F(")"));
+    Serial.print(F("NOTE: This is the flap at the marker edge position (home/reference point)"));
+    Serial.println();
+    
+    // Update current flap index to what user actually sees
+    currentFlapIndex = seenIndex;
+    
+    // Now move to next letter slowly for precise measurement
+    int nextIndex = (currentFlapIndex + 1) % AMOUNTFLAPS;
+    
+    // Determine slow region size based on measurement count
+    int slowRegionSteps = (int)(STEPS_PER_FLAP * 1.5); // Large slow region for first measurements
+    
+    Serial.println();
+    Serial.print(F("Moving to next letter '"));
+    Serial.print(letters[nextIndex]);
+    Serial.print(F("' (flap index "));
+    Serial.print(nextIndex);
+    Serial.println(F(")..."));
+    
+    goToFlapIndexFastThenSlow(nextIndex, slowRegionSteps);
+    // After movement, ask user to press Enter when next letter flips
+    if (!newData) {
+      askUserToPressEnter();
+    }
   }
-  
-  // Update current flap index to what user actually sees
-  currentFlapIndex = seenIndex;
-  
-  // Now move to next letter slowly for precise measurement
-  int nextIndex = (currentFlapIndex + 1) % AMOUNTFLAPS;
-  
-  // Determine slow region size based on measurement count
-  int slowRegionSteps;
-  if (measurementCount < 2) {
-    slowRegionSteps = (int)(STEPS_PER_FLAP * 1.5); // Large slow region for first measurements
-  } else if (measurementCount < 5) {
-    slowRegionSteps = (int)(STEPS_PER_FLAP * 0.8); // Medium slow region
-  } else {
-    slowRegionSteps = (int)(STEPS_PER_FLAP * 0.5); // Small slow region for fine tuning
-  }
-  
-  Serial.println();
-  Serial.print(F("Moving to next letter '"));
-  Serial.print(letters[nextIndex]);
-  Serial.print(F("' (flap index "));
-  Serial.print(nextIndex);
-  Serial.println(F(")..."));
-  
-  goToFlapIndexFastThenSlow(nextIndex, slowRegionSteps);
-  // Don't call askUserToPressEnter() here - if Enter was pressed during movement,
-  // recordFlapPosition() was already called and will handle the next step
-  if (!newData) {
-    askUserToPressEnter();
-  }
+  // Note: After first measurement, all subsequent measurements are handled by recordFlapPosition()
+  // which is called when user presses Enter (empty input)
 }
 
 void recordFlapPosition() {
@@ -634,10 +555,6 @@ void recordFlapPosition() {
   measuredPositions[measurementCount] = totalStepsFromHome;
   measurementCount++;
   
-  // Update currentFlapIndex to the flap we just measured (the one that just flipped)
-  // This is the next flap after the previous currentFlapIndex
-  currentFlapIndex = (currentFlapIndex + 1) % AMOUNTFLAPS;
-  
   Serial.println();
   Serial.println(); // Extra blank line for better formatting
   Serial.print(F("*** Recorded position: "));
@@ -650,6 +567,18 @@ void recordFlapPosition() {
   Serial.print(F("Progress: Measurement "));
   Serial.print(measurementCount);
   Serial.println(F(" of 5"));
+  
+  // Check if we have enough measurements - finish calibration
+  if (measurementCount >= 5) {
+    Serial.println();
+    Serial.println(F("5 measurements completed! Finishing calibration..."));
+    finishCalibration();
+    return;
+  }
+  
+  // Update currentFlapIndex to the flap we just measured (the one that just flipped)
+  // This is the next flap after the previous currentFlapIndex
+  currentFlapIndex = (currentFlapIndex + 1) % AMOUNTFLAPS;
   
   // Show current calculations if we have enough measurements
   if (measurementCount >= 2) {
@@ -715,63 +644,9 @@ void finishCalibration() {
     return;
   }
   
-  // Model: position of nth flap = offset + n*D
-  // Where: offset = position where blank flap flips, D = steps per flap, n = flap number (0, 1, 2, 3, 4)
-  // We'll calculate D from differences, then back-calculate offset from all measurements
-  
-  // Step 1: Calculate D (steps per flap) from differences between consecutive measurements
-  long stepsPerFlapDiffs[20];
-  int diffCount = 0;
-  for (int i = 0; i < measurementCount - 1; i++) {
-    stepsPerFlapDiffs[diffCount] = measuredPositions[i + 1] - measuredPositions[i];
-    diffCount++;
-  }
-  
-  // Calculate median of steps per flap differences (more robust than mean)
-  long stepsPerFlapSorted[20];
-  for (int i = 0; i < diffCount; i++) {
-    stepsPerFlapSorted[i] = stepsPerFlapDiffs[i];
-  }
-  for (int i = 0; i < diffCount - 1; i++) {
-    for (int j = 0; j < diffCount - i - 1; j++) {
-      if (stepsPerFlapSorted[j] > stepsPerFlapSorted[j + 1]) {
-        long temp = stepsPerFlapSorted[j];
-        stepsPerFlapSorted[j] = stepsPerFlapSorted[j + 1];
-        stepsPerFlapSorted[j + 1] = temp;
-      }
-    }
-  }
-  long medianStepsPerFlap = stepsPerFlapSorted[diffCount / 2];
-  
-  // Filter outliers from steps per flap (more than 20 steps from median)
-  const long OUTLIER_THRESHOLD_STEPS = 20;
-  long sumStepsPerFlap = 0;
-  int validStepsCount = 0;
-  for (int i = 0; i < diffCount; i++) {
-    if (abs(stepsPerFlapDiffs[i] - medianStepsPerFlap) <= OUTLIER_THRESHOLD_STEPS) {
-      sumStepsPerFlap += stepsPerFlapDiffs[i];
-      validStepsCount++;
-    }
-  }
-  
-  long avgStepsPerFlap;
-  if (validStepsCount == 0) {
-    Serial.println(F("All step differences were outliers! Using median anyway."));
-    avgStepsPerFlap = medianStepsPerFlap;
-  } else {
-    avgStepsPerFlap = sumStepsPerFlap / validStepsCount;
-  }
-  
-  // Step 2: Calculate offset using linear regression
-  // Model: measuredPositions[i] = offset + (flapsFromBlank[i] * D)
-  // Where flapsFromBlank[i] is the signed number of flaps from blank (0) to the current flap
-  // offset is the position where the blank flap (index 0) flips
-  // 
-  // flapsFromBlank calculation:
-  // - If at index 0 (blank): flapsFromBlank = 0, so offset = position
-  // - If at index 1 (A): flapsFromBlank = 1 (1 flap after blank), so offset = position - D
-  // - If at index 44 (!): flapsFromBlank = -1 (1 flap before blank), so offset = position + D
-  
+  // Validate that marker edge is at blank flap (index 0), '!' (index 44), or '?' (index 43)
+  // These are valid because the blank flap is close (0-2 flaps backward), so wrap-around is fine
+  // Any flap at 'A' (index 1) through '-' (index 42) should give an error
   if (firstMeasurementFlapIndex == -1) {
     Serial.println(F("ERROR: First measurement flap index not recorded!"));
     return;
@@ -779,207 +654,195 @@ void finishCalibration() {
   
   const int BLANK_FLAP_INDEX = 0; // Blank/space flap is at index 0
   
-  // Calculate offset from each measurement
-  // Measurement 0 is at firstMeasurementFlapIndex
-  // Measurement 1 is at (firstMeasurementFlapIndex + 1) % AMOUNTFLAPS
-  // etc.
-  long sumOffset = 0;
-  int validOffsetCount = 0;
-  
-  for (int i = 0; i < measurementCount; i++) {
-    // Calculate which flap index this measurement corresponds to
-    int measurementFlapIndex = (firstMeasurementFlapIndex + i) % AMOUNTFLAPS;
-    
-    // Calculate signed number of flaps from blank (0) to current flap
-    // This tells us how many flaps forward (positive) or backward (negative) we are from blank
-    int flapsFromBlank = measurementFlapIndex - BLANK_FLAP_INDEX;
-    
-    // Handle wrap-around: if index is > AMOUNTFLAPS/2, we're actually before blank
-    // For example, index 44 is 1 flap before blank (index 0), not 44 flaps after
-    if (flapsFromBlank > AMOUNTFLAPS / 2) {
-      flapsFromBlank = flapsFromBlank - AMOUNTFLAPS; // Make it negative (before blank)
-    }
-    
-    // Model: measuredPositions[i] = offset + (flapsFromBlank * D)
-    // So: offset = measuredPositions[i] - (flapsFromBlank * D)
-    long calculatedOffset = measuredPositions[i] - ((long)flapsFromBlank * avgStepsPerFlap);
-    
-    sumOffset += calculatedOffset;
-    validOffsetCount++;
-  }
-  
-  // Ensure we have at least one valid measurement
-  if (validOffsetCount == 0) {
-    Serial.println(F("ERROR: No valid offset measurements!"));
-    return;
-  }
-  
-  // Average offset from all measurements (more robust than using just first)
-  long offset = sumOffset / validOffsetCount;
-  
-  // Check if offset is way off (more than D steps from expected range)
-  // This could indicate the user misidentified the first flap by more than 1 flap
-  // Expected offset should be roughly between 0 and D (one flap's worth of steps)
-  // If offset is negative and large, or positive and > D, we might need to adjust
-  long expectedOffsetMin = -avgStepsPerFlap / 2;  // Allow some negative (if slightly before blank)
-  long expectedOffsetMax = avgStepsPerFlap * 2;     // Allow up to 2 flaps ahead
-  
-  // If offset is way outside expected range, check if adding/subtracting D helps
-  if (offset < expectedOffsetMin || offset > expectedOffsetMax) {
+  bool isValidPosition = (firstMeasurementFlapIndex == 0 || firstMeasurementFlapIndex == 43 || firstMeasurementFlapIndex == 44);
+  if (!isValidPosition) {
     Serial.println();
-    Serial.println(F("WARNING: Calculated offset is outside expected range!"));
-    Serial.print(F("  offset = "));
-    Serial.print(offset);
-    Serial.print(F(" steps (expected between "));
-    Serial.print(expectedOffsetMin);
-    Serial.print(F(" and "));
-    Serial.print(expectedOffsetMax);
-    Serial.println(F(" steps)"));
-    Serial.println(F("  This might indicate the first flap was misidentified."));
-    Serial.println(F("  Trying to correct by adjusting by multiples of D..."));
-    
-    // Try adjusting offset by multiples of D to get it into reasonable range
-    long bestOffset = offset;
-    int bestAdjustment = 0;
-    long bestDistance = abs(offset);
-    
-    // Try adjustments from -2D to +2D
-    for (int adj = -2; adj <= 2; adj++) {
-      long adjustedOffset = offset + (adj * avgStepsPerFlap);
-      long distance = abs(adjustedOffset);
-      if (distance < bestDistance && adjustedOffset >= expectedOffsetMin && adjustedOffset <= expectedOffsetMax) {
-        bestOffset = adjustedOffset;
-        bestAdjustment = adj;
-        bestDistance = distance;
+    Serial.println(F("========================================"));
+    Serial.println(F("ERROR: Marker position invalid!"));
+    Serial.println(F("========================================"));
+    Serial.println();
+    Serial.print(F("Marker edge is at flap index "));
+    Serial.print(firstMeasurementFlapIndex);
+    Serial.print(F(" ('"));
+    Serial.print(letters[firstMeasurementFlapIndex]);
+    Serial.println(F("')"));
+    Serial.print(F("Blank flap is at index 0 ('"));
+    Serial.print(letters[0]);
+    Serial.println(F("')"));
+    Serial.println();
+    Serial.println(F("The marker edge must be at one of these positions:"));
+    Serial.println(F("  - Blank flap (' ', index 0)"));
+    Serial.println(F("  - '?' (index 43)"));
+    Serial.println(F("  - '!' (index 44)"));
+    Serial.println();
+    Serial.println(F("Any flap from 'A' (index 1) through '-' (index 42) is invalid."));
+    Serial.println();
+    Serial.println(F("SOLUTION:"));
+    Serial.println(F("1. Physically move the hall sensor/magnet so the marker edge"));
+    Serial.println(F("   appears at the blank flap (' '), '?', or '!'"));
+    Serial.println(F("2. Re-run calibration after repositioning"));
+    Serial.println();
+    Serial.println(F("Calibration cancelled."));
+    Serial.println(F("========================================"));
+    return; // Exit without saving
+  }
+  
+  // Calculate offset using ACTUAL MEASURED positions, not theoretical calculations
+  // Find which measurement corresponds to the blank flap (index 0)
+  int blankFlapMeasurementIndex = -1;
+  for (int i = 0; i < measurementCount; i++) {
+    int measurementFlapIndex = (firstMeasurementFlapIndex + i) % AMOUNTFLAPS;
+    if (measurementFlapIndex == BLANK_FLAP_INDEX) {
+      blankFlapMeasurementIndex = i;
+      break;
+    }
+  }
+  
+  long finalOffset;
+  if (blankFlapMeasurementIndex >= 0) {
+    // We have a measurement for the blank flap - use the actual measured position
+    long stepsToBlankEdge = measuredPositions[blankFlapMeasurementIndex] - measuredPositions[0];
+    // Calculate half flap from actual measured steps per flap
+    long avgStepsPerFlap = 0;
+    if (measurementCount > 1) {
+      long sumDiffs = 0;
+      for (int i = 0; i < measurementCount - 1; i++) {
+        sumDiffs += (measuredPositions[i + 1] - measuredPositions[i]);
       }
-    }
-    
-    if (bestAdjustment != 0) {
-      Serial.print(F("  Adjusted offset by "));
-      Serial.print(bestAdjustment);
-      Serial.print(F(" * D ("));
-      Serial.print(bestAdjustment * avgStepsPerFlap);
-      Serial.println(F(" steps)"));
-      offset = bestOffset;
+      avgStepsPerFlap = sumDiffs / (measurementCount - 1);
     } else {
-      Serial.println(F("  Could not find good adjustment. Using calculated offset anyway."));
+      avgStepsPerFlap = (long)(STEPS_PER_FLAP + 0.5); // Fallback to theoretical if only one measurement
     }
+    long halfFlap = avgStepsPerFlap / 2;
+    finalOffset = stepsToBlankEdge + halfFlap;
+  } else {
+    // Fallback: calculate from flap indices if blank flap wasn't measured
+    // This shouldn't happen if validation is working correctly
+    int directBackward = firstMeasurementFlapIndex - BLANK_FLAP_INDEX;
+    int wrapAroundBackward = (AMOUNTFLAPS - firstMeasurementFlapIndex + BLANK_FLAP_INDEX) % AMOUNTFLAPS;
+    int flapsBackwardToBlank = (directBackward <= wrapAroundBackward) ? directBackward : wrapAroundBackward;
+    long stepsPerFlap = (long)(STEPS_PER_FLAP + 0.5);
+    long halfFlap = stepsPerFlap / 2;
+    finalOffset = ((long)flapsBackwardToBlank * stepsPerFlap) + halfFlap;
   }
   
-  // Step 3: Calculate final offset = offset + D/2 (center in middle of blank flap)
-  long finalOffset = offset + (avgStepsPerFlap / 2);
-  
-  // Ensure offset is positive (if somehow negative, add a full rotation)
-  if (finalOffset < 0) {
-    Serial.print(F("WARNING: Calculated offset is negative ("));
+  // Warn if offset is very small (marker is at end of blank flap range)
+  long minOffsetWarning = avgStepsPerFlap > 0 ? avgStepsPerFlap : (long)(STEPS_PER_FLAP + 0.5);
+  if (finalOffset < minOffsetWarning) {
+    Serial.println();
+    Serial.println(F("========================================"));
+    Serial.println(F("WARNING: Very small offset detected!"));
+    Serial.println(F("========================================"));
+    Serial.println();
+    Serial.print(F("Calculated offset: "));
     Serial.print(finalOffset);
-    Serial.print(F("). Adding full rotation ("));
-    Serial.print(STEPS);
-    Serial.println(F(" steps)."));
-    finalOffset += STEPS;
+    Serial.println(F(" steps"));
+    Serial.print(F("This is less than one flap's worth ("));
+    Serial.print(minOffsetWarning);
+    Serial.println(F(" steps)"));
+    Serial.println();
+    Serial.println(F("This means the marker edge is positioned at or very near the end"));
+    Serial.println(F("of the blank flap range. The calibration will proceed, but you may"));
+    Serial.println(F("want to consider moving the hall sensor/magnet slightly earlier to"));
+    Serial.println(F("provide more margin."));
+    Serial.println();
+    Serial.println(F("Calibration will continue..."));
+    Serial.println(F("========================================"));
+    Serial.println();
   }
   
-  // Also ensure offset is within one rotation
-  if (finalOffset >= STEPS) {
-    Serial.print(F("WARNING: Calculated offset is >= one rotation ("));
+  // Validate offset is within one rotation (should always be true now that we reject wrap-around cases)
+  if (finalOffset >= STEPS || finalOffset < 0) {
+    Serial.println();
+    Serial.println(F("ERROR: Calculated offset is out of range!"));
+    Serial.print(F("Offset: "));
     Serial.print(finalOffset);
-    Serial.print(F("). Subtracting one rotation ("));
-    Serial.print(STEPS);
-    Serial.println(F(" steps)."));
-    finalOffset -= STEPS;
+    Serial.print(F(" steps (should be 0-"));
+    Serial.print(STEPS - 1);
+    Serial.println(F(")"));
+    Serial.println(F("This should not happen - please report this error."));
+    Serial.println(F("Calibration cancelled."));
+    return; // Exit without saving
   }
   
-  Serial.print(F("Total measurements: "));
-  Serial.println(measurementCount);
+  // Display offset calculation summary
   Serial.println();
-  
-  Serial.print(F("Calculated steps per flap: "));
-  Serial.print(avgStepsPerFlap);
-  Serial.print(F(" steps (theoretical: "));
-  Serial.print(STEPS_PER_FLAP, 2);
-  Serial.println(F(")"));
-  Serial.print(F("Valid step differences used: "));
-  Serial.print(validStepsCount);
-  Serial.print(F(" of "));
-  Serial.println(diffCount);
-  Serial.println();
-  
-  Serial.print(F("First measurement was at flap index "));
+  Serial.println(F("--- Offset Calculation Summary ---"));
+  Serial.print(F("Marker edge position: flap index "));
   Serial.print(firstMeasurementFlapIndex);
   Serial.print(F(" ('"));
   Serial.print(letters[firstMeasurementFlapIndex]);
   Serial.println(F("')"));
+  
+  if (blankFlapMeasurementIndex >= 0) {
+    // Using actual measured position
+    Serial.print(F("Blank flap measured at: "));
+    Serial.print(measuredPositions[blankFlapMeasurementIndex]);
+    Serial.println(F(" steps from marker"));
+    Serial.print(F("Steps to blank flap edge: "));
+    Serial.print(stepsToBlankEdge);
+    Serial.println(F(" steps (measured)"));
+    Serial.print(F("Average steps per flap: "));
+    Serial.print(avgStepsPerFlap);
+    Serial.println(F(" steps (from measurements)"));
+    Serial.print(F("Half flap (to center): "));
+    Serial.print(halfFlap);
+    Serial.println(F(" steps"));
+    Serial.print(F("Final offset: "));
+    Serial.print(finalOffset);
+    Serial.println(F(" steps"));
+  } else {
+    // Fallback calculation
+    Serial.println(F("(Using fallback calculation - blank flap not measured)"));
+    Serial.print(F("Final offset: "));
+    Serial.print(finalOffset);
+    Serial.println(F(" steps"));
+  }
   Serial.println();
-  Serial.print(F("D (steps per flap, from differences): "));
-  Serial.print(avgStepsPerFlap);
-  Serial.print(F(" steps (used "));
-  Serial.print(validStepsCount);
-  Serial.print(F(" of "));
-  Serial.print(diffCount);
-  Serial.println(F(" differences)"));
+  Serial.println(F("--- Offset Interpretation ---"));
+  Serial.print(F("Marker edge: 0 steps (home/reference point)"));
   Serial.println();
-    Serial.println(F("Calculating offset from all measurements using model: position = offset + (flapsFromBlank * D)"));
-    for (int i = 0; i < measurementCount; i++) {
-      int measurementFlapIndex = (firstMeasurementFlapIndex + i) % AMOUNTFLAPS;
-      int flapsFromBlank = measurementFlapIndex - BLANK_FLAP_INDEX;
-      if (flapsFromBlank > AMOUNTFLAPS / 2) {
-        flapsFromBlank = flapsFromBlank - AMOUNTFLAPS;
-      }
-      long calculatedOffset = measuredPositions[i] - ((long)flapsFromBlank * avgStepsPerFlap);
-      Serial.print(F("  Measurement "));
-      Serial.print(i + 1);
-      Serial.print(F(" (flap '"));
-      Serial.print(letters[measurementFlapIndex]);
-      Serial.print(F("', index "));
-      Serial.print(measurementFlapIndex);
-      Serial.print(F("): position="));
-      Serial.print(measuredPositions[i]);
-      Serial.print(F(", flapsFromBlank="));
-      Serial.print(flapsFromBlank);
-      Serial.print(F(", calculated offset="));
-      Serial.println(calculatedOffset);
-    }
-  Serial.println();
-  Serial.print(F("offset (average from all measurements): "));
-  Serial.print(offset);
-  Serial.println(F(" steps"));
-  Serial.print(F("D/2 (half steps per flap): "));
-  Serial.print(avgStepsPerFlap / 2);
-  Serial.println(F(" steps"));
-  Serial.print(F("Final offset (offset + D/2, center of blank flap): "));
+  Serial.print(F("Blank flap center: "));
   Serial.print(finalOffset);
-  Serial.println(F(" steps"));
+  Serial.println(F(" steps from marker edge"));
+  Serial.print(F("(Marker edge + (ROTATIONDIRECTION * offset) = center of blank flap)"));
+  Serial.println();
   Serial.println();
   
   // Show individual measurements
   Serial.println(F("Individual measurements:"));
+  Serial.flush(); // Ensure all output is sent before continuing
+  delay(50);
+  
   for (int i = 0; i < measurementCount; i++) {
+    int measurementFlapIndex = (firstMeasurementFlapIndex + i) % AMOUNTFLAPS;
     Serial.print(F("  Measurement "));
     Serial.print(i + 1);
-    Serial.print(F(": position "));
+    Serial.print(F(": flap '"));
+    Serial.print(letters[measurementFlapIndex]);
+    Serial.print(F("' (index "));
+    Serial.print(measurementFlapIndex);
+    Serial.print(F(") at position "));
     Serial.print(measuredPositions[i]);
     Serial.print(F(" steps from home"));
     if (i == 0) {
-      Serial.print(F(" (used for offset calculation)"));
-    }
-    if (i < measurementCount - 1) {
-      long diff = measuredPositions[i + 1] - measuredPositions[i];
-      bool diffIsOutlier = abs(diff - medianStepsPerFlap) > OUTLIER_THRESHOLD_STEPS;
-      Serial.print(F(" -> next: "));
-      Serial.print(diff);
-      Serial.print(F(" steps"));
-      if (diffIsOutlier) {
-        Serial.print(F(" (OUTLIER - not used for D)"));
-      } else {
-        Serial.print(F(" (used for D)"));
-      }
+      Serial.print(F(" (marker edge position)"));
     }
     Serial.println();
+    
+    // Flush periodically to prevent buffer overflow
+    if (i % 2 == 0) {
+      Serial.flush();
+      delay(10);
+    }
   }
   
-  // Save to EEPROM (same as EEPROM_Write_Offset.ino)
-  int eeAddress = 0;
-  uint16_t offsetToSave = (uint16_t)finalOffset;
+  Serial.flush(); // Ensure all output is sent before continuing
+  delay(50);
+  
+  // Save to EEPROM (same address and method as EEPROM_Write_Offset.ino, but using uint16_t to match Unit.ino)
+  int eeAddress = 0;   // Location we want the data to be put (same as EEPROM_Write_Offset.ino)
+  uint16_t offsetToSave = (uint16_t)finalOffset;  // Use uint16_t to match Unit.ino which reads it as uint16_t
   
   // Ensure it fits in uint16_t (0-65535)
   if (offsetToSave > 65535) {
@@ -987,7 +850,10 @@ void finishCalibration() {
     offsetToSave = 65535;
   }
   
-  EEPROM.put(eeAddress, offsetToSave);
+  EEPROM.put(eeAddress, offsetToSave);  // Same method as EEPROM_Write_Offset.ino (writes to same address)
+  
+  Serial.flush(); // Ensure all output is sent before continuing
+  delay(100);
   
   Serial.println();
   Serial.println(F("=== EEPROM Write ==="));
@@ -995,21 +861,25 @@ void finishCalibration() {
   Serial.println(offsetToSave);
   Serial.println();
   
+  Serial.flush(); // Ensure all output is sent before continuing
+  delay(100);
+  
   // Final Summary Block
   Serial.println(F("========================================"));
   Serial.println(F("=== CALIBRATION SUMMARY ==="));
   Serial.println(F("========================================"));
   Serial.println();
   
+  Serial.flush(); // Ensure all output is sent before continuing
+  delay(100);
+  
   Serial.println(F("--- Calibration Results ---"));
   Serial.print(F("Final Offset: "));
   Serial.print(finalOffset);
   Serial.println(F(" steps"));
   Serial.print(F("Steps per Flap: "));
-  Serial.print(avgStepsPerFlap);
-  Serial.print(F(" steps (theoretical: "));
-  Serial.print(STEPS_PER_FLAP, 2);
-  Serial.println(F(")"));
+  Serial.print(stepsPerFlap);
+  Serial.println(F(" steps"));
   Serial.print(F("Measurements Used: "));
   Serial.print(measurementCount);
   Serial.println(F(" of 5"));
@@ -1045,6 +915,9 @@ void finishCalibration() {
   Serial.println(F("========================================"));
   Serial.println(F("Calibration complete!"));
   Serial.println(F("========================================"));
+  
+  Serial.flush(); // Ensure all output is sent
+  delay(100);
 }
 
 int findLetterIndex(char letter) {
