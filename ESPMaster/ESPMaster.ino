@@ -13,16 +13,26 @@
   
   Modified by Scott - Added LED debug codes and non-blocking operations for better web server responsiveness
   
-  Version: 1.1.19
-  Changes: Fixed OTA update code bugs and improved compatibility
-           - Fixed handler registration order (handlers must be registered BEFORE begin())
-           - Fixed OTA_AUTH_ERROR message (was incorrectly saying "Finished" instead of "Authentication Failed")
-           - Improved error messages with more descriptive text for each error type
-           - Fixed progress calculation to avoid division by zero
-           - Replaced SerialPrintf with SerialPrint for better compatibility
-           - Fixed HTML syntax errors in OTA page (extra parentheses in href attributes)
-           - Added yield() call in OTA handle loop for better responsiveness
-           - Added handling for unknown OTA error codes
+  Version: 1.1.22
+  Changes: Added I2C setup scan system for comprehensive bus testing
+           - Created ServiceI2CSetupScan.ino that scans all 16 possible I2C addresses (0-15)
+           - Tests both read and write operations for each found device
+           - Reports which addresses are working, read-only, write-only, or not working
+           - Compares found devices against expected units (0 to UNITS_AMOUNT-1)
+           - Identifies unexpected devices (misconfigured address switches)
+           - Added I2C_SETUP_SCAN_ENABLE flag (default: true) for startup scanning
+           - Added /i2c-setup-scan endpoint for on-demand testing
+           - Perfect for testing individual units before connecting them all
+           - Each unit keeps its configured ID number (no renumbering needed)
+  
+  Version: 1.1.21
+  Changes: Added optional I2C diagnostic testing system
+           - Created ServiceI2CDiagnostics.ino with comprehensive read/write/speed tests
+           - Added I2C_DIAGNOSTIC_ENABLE flag (default: false) for startup testing
+           - Added /i2c-diagnostics endpoint for on-demand testing (works even if flag is false)
+           - Can test specific unit (?unit=7) or all units
+           - Tests: address detection, read operations, write operations, error rate
+           - Safe to enable/disable without affecting normal operation
   
   Major Changes from Scientress Fork:
   - Expanded I2C status codes: ESPMaster now interprets detailed unit calibration states for better debugging
@@ -53,6 +63,8 @@
 #define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
 #define DEBUG_ENABLE        true  //Enable debug features: startup debug page, error status panel, and serial debug log at bottom of page
 #define PAGE_LOAD_DEBUG_ENABLE false  //Enable page load debug blocks: browser errors panel and page load debug log at top of page (set to true for troubleshooting page loading issues)
+#define I2C_DIAGNOSTIC_ENABLE false  //Enable I2C diagnostic testing (DISABLED by default - blocks web server startup; use /i2c-diagnostics endpoint instead)
+#define I2C_SETUP_SCAN_ENABLE false  //Enable I2C setup scan at startup (DISABLED by default - blocks web server startup; use /i2c-setup-scan endpoint instead)
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices
@@ -188,6 +200,10 @@ const char* espVersion = "3.0.0";
 const char letters[] = {' ', 'A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z', '$', '&', '#', '0', '1', '2', '3', '4', '5', '6', '7', '8', '9', ':', '.', '-', '?', '!'};
 int displayState[UNITS_AMOUNT];
 int connectedUnitCount = 0; // Number of units actually detected on I2C bus
+// Store unit status from initial scan for static display on main page
+bool staticFoundUnits[16] = {false}; // Track which addresses are found (from initial scan)
+int staticUnitStatus[16] = {-2}; // Track status of each address (-2 = not found, -1 = sleeping, 0 = ready, 1 = busy)
+bool staticUnitStatusValid = false; // Whether we have valid static unit status data
 unsigned long previousMillis = 0;
 
 //Search for parameter in HTTP POST request
@@ -250,6 +266,14 @@ bool showDebugPage = true; // Default to showing debug page on first boot
 volatile bool webRequestActive = false; // Flag to skip display updates during web requests
 LList<ScheduledMessage> scheduledMessages;
 Timezone timezone; 
+
+// Forward declaration for I2C diagnostics (defined in ServiceI2CDiagnostics.ino)
+// Function is always available, but only runs if I2C_DIAGNOSTIC_ENABLE is true or called via endpoint
+void runI2CDiagnostics(int unitAddress);
+
+// Forward declaration for I2C setup scan (defined in ServiceI2CSetupScan.ino)
+// Scans all 16 possible addresses and tests read/write operations
+void runI2CSetupScan();
 
 //Create AsyncWebServer object on port 80
 AsyncWebServer webServer(80);
@@ -371,14 +395,23 @@ void setup() {
   ledOff();
 #endif
 
-  // I2C bus scan on startup
+  // I2C bus scan is now disabled at startup to prevent blocking web server
+  // Use the "Scan I2C Bus" button on the main page to run scanI2CBus() on-demand
   delay(500); // Give I2C bus time to stabilize
   SerialPrintln("");
-  SerialPrintln("=== I2C Bus Scan on Startup ===");
-  scanI2CBus();
+  SerialPrintln("=== I2C Bus Scan Skipped at Startup ===");
+  SerialPrintln("Use the 'Scan I2C Bus' button on the main page to scan units on-demand");
   SerialPrintln("");
-
+  
+  // I2C diagnostic testing (if enabled)
+#if I2C_DIAGNOSTIC_ENABLE == true
+  SerialPrintln("I2C Diagnostic Testing is ENABLED");
+  runI2CDiagnostics(-1); // Test all units (-1 = all units)
+#else
+  SerialPrintln("I2C Diagnostic Testing is DISABLED (set I2C_DIAGNOSTIC_ENABLE to true to enable, or use /i2c-diagnostics endpoint)");
+#endif
   SerialPrintln("");
+  
   SerialPrintln("#######################################################");
   SerialPrintln("..............Split Flap Display Starting..............");
   SerialPrintln("#######################################################");
@@ -482,56 +515,13 @@ void setup() {
         html += "</style>";
         html += "</head><body>";
         html += "<h1>Split Flap - Debug Mode</h1>";
-        html += "<button onclick='continueToNormal()'>Continue to Normal Mode</button>";
-        html += "<div class='status'>Current Status: " + debugStatus + "</div>";
-        html += "<p>Debug mode is enabled. This page shows the initialization log. When you continue to normal mode, you'll also see error status panel, page load debug log, and serial debug log features.</p>";
-        html += "<div class='log-container' id='logContainer'>";
-        html += "<div style='color: #888;'>Loading log...</div>";
+        html += "<div style='margin-bottom: 15px;'>";
+        html += "<button onclick='continueToNormal()' style='margin-right: 10px;'>Continue to Normal Mode</button>";
+        html += "<button onclick='copyLog()' style='background: #4ec9b0;'>Copy Log</button>";
         html += "</div>";
+        html += "<div class='status'>Current Status: " + debugStatus + "</div>";
+        html += "<p>Debug mode is enabled. Click below to continue to the main page.</p>";
         html += "<script>";
-        html += "function loadLog() {";
-        html += "  var xhr = new XMLHttpRequest();";
-        html += "  xhr.onreadystatechange = function() {";
-        html += "    if (this.readyState == 4) {";
-        html += "      var container = document.getElementById('logContainer');";
-        html += "      if (this.status == 200) {";
-        html += "        try {";
-        html += "          var data = JSON.parse(this.responseText);";
-        html += "          var html = '';";
-        html += "          if (data.logs && data.logs.length > 0) {";
-        html += "            for (var i = 0; i < data.logs.length; i++) {";
-        html += "              var entry = data.logs[i];";
-        html += "              var msg = entry.message || '';";
-        html += "              var timestamp = (entry.timestamp / 1000).toFixed(1) + 's';";
-        html += "              var colorClass = '';";
-        html += "              if (msg.indexOf('DEBUG:') >= 0) colorClass = 'debug';";
-        html += "              else if (msg.indexOf('ERROR') >= 0 || msg.indexOf('Error') >= 0) colorClass = 'error';";
-        html += "              else if (msg.indexOf('WARNING') >= 0 || msg.indexOf('Warning') >= 0) colorClass = 'warning';";
-        html += "              html += '<div class=\"log-entry\"><span class=\"timestamp\">[' + timestamp + ']</span><span class=\"' + colorClass + '\">' + escapeHtml(msg) + '</span></div>';";
-        html += "            }";
-        html += "          } else {";
-        html += "            html = '<div style=\"color: #888;\">No log messages yet. (Count: ' + (data.count || 0) + ')</div>';";
-        html += "          }";
-        html += "          container.innerHTML = html;";
-        html += "        } catch (e) {";
-        html += "          container.innerHTML = '<div style=\"color: #f48771;\">Error parsing log: ' + e.message + '<br>Response: ' + escapeHtml(this.responseText.substring(0, 200)) + '</div>';";
-        html += "        }";
-        html += "      } else {";
-        html += "        container.innerHTML = '<div style=\"color: #f48771;\">Error loading log: Status ' + this.status + '</div>';";
-        html += "      }";
-        html += "    }";
-        html += "  };";
-        html += "  xhr.onerror = function() {";
-        html += "    var container = document.getElementById('logContainer');";
-        html += "    container.innerHTML = '<div style=\"color: #f48771;\">Network error loading log</div>';";
-        html += "  };";
-        html += "  xhr.open('GET', '/log', true);";
-        html += "  xhr.send();";
-        html += "}";
-        html += "function escapeHtml(text) {";
-        html += "  var map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '\"': '&quot;', \"'\": '&#039;' };";
-        html += "  return text.replace(/[&<>\"']/g, function(m) { return map[m]; });";
-        html += "}";
         html += "function continueToNormal() {";
         html += "  var xhr = new XMLHttpRequest();";
         html += "  xhr.onreadystatechange = function() {";
@@ -542,8 +532,6 @@ void setup() {
         html += "  xhr.open('GET', '/exit-debug-mode', true);";
         html += "  xhr.send();";
         html += "}";
-        html += "loadLog();";
-        html += "setInterval(loadLog, 1000);"; // Auto-refresh every second
         html += "</script>";
         html += "</body></html>";
         
@@ -632,8 +620,13 @@ void setup() {
     });
     
     webServer.on("/log", HTTP_GET, [](AsyncWebServerRequest * request) {
-      // Use JSON document to handle log entries (reduced size to prevent memory issues)
-      StaticJsonDocument<15000> document;
+      SerialPrintln("DEBUG: /log endpoint requested");
+      
+      // Use JSON document to handle log entries
+      // Reduced to 30 entries max with shorter messages to prevent truncation
+      // With 30 entries max, ~150 bytes per entry (message + timestamp), need ~5KB minimum
+      // Using 12KB buffer to be safe with escaped characters and overhead
+      StaticJsonDocument<12000> document;
       document["count"] = serialLogCount;
       
       // Initialize logs array even if empty
@@ -643,28 +636,42 @@ void setup() {
         int startIndex = serialLogCount < SERIAL_LOG_SIZE ? 0 : serialLogIndex;
         int entriesToReturn = serialLogCount < SERIAL_LOG_SIZE ? serialLogCount : SERIAL_LOG_SIZE;
         
-        // Limit to last 50 entries to prevent JSON buffer overflow and memory issues
-        int maxEntries = entriesToReturn > 50 ? 50 : entriesToReturn;
-        int actualStart = entriesToReturn > 50 ? (startIndex + entriesToReturn - 50) % SERIAL_LOG_SIZE : startIndex;
+        // Limit to last 30 entries to prevent JSON buffer overflow and memory issues
+        int maxEntries = entriesToReturn > 30 ? 30 : entriesToReturn;
+        int actualStart = entriesToReturn > 30 ? (startIndex + entriesToReturn - 30) % SERIAL_LOG_SIZE : startIndex;
         
+        // Try to add entries, but check if we're running out of space
         for (int i = 0; i < maxEntries; i++) {
           int idx = (actualStart + i) % SERIAL_LOG_SIZE;
           String msg = serialLog[idx].message;
           
-          // Truncate very long messages to prevent JSON issues (max 300 chars)
-          if (msg.length() > 300) {
-            msg = msg.substring(0, 297) + "...";
+          // Truncate very long messages to prevent JSON issues (max 180 chars to leave room for JSON escaping overhead)
+          // This ensures we don't exceed buffer even with many escaped characters
+          if (msg.length() > 180) {
+            msg = msg.substring(0, 177) + "...";
           }
           
+          // ArduinoJson automatically escapes special characters in strings, so no manual escaping needed
           JsonObject logEntry = logsArray.add<JsonObject>();
           logEntry["message"] = msg;
           logEntry["timestamp"] = serialLog[idx].timestamp;
+          
+          // Check if document is getting too full (rough estimate - stop at 10KB to leave room)
+          if (document.memoryUsage() > 10000) {
+            // Stop adding entries if we're getting close to buffer limit
+            SerialPrintln("WARNING: Log JSON buffer getting full, stopping at entry " + String(i + 1));
+            break;
+          }
         }
       }
       
       String jsonString;
-      jsonString.reserve(15000); // Reserve memory to prevent fragmentation
-      serializeJson(document, jsonString);
+      jsonString.reserve(12000); // Reserve memory to prevent fragmentation
+      
+      // Measure size before serialization
+      size_t initialSize = jsonString.length();
+      size_t bytesWritten = serializeJson(document, jsonString);
+      size_t finalSize = jsonString.length();
       
       // Check if serialization succeeded
       if (jsonString.length() == 0) {
@@ -673,9 +680,159 @@ void setup() {
         return;
       }
       
+      // Check if serialization was truncated by comparing bytes written to string length
+      // If bytesWritten is 0, it means serialization failed
+      // If the string is very close to buffer size, it might be truncated
+      if (bytesWritten == 0 || jsonString.length() > 11500) {
+        SerialPrintln("ERROR: JSON serialization truncated - buffer too small. Size: " + String(jsonString.length()) + ", bytesWritten: " + String(bytesWritten));
+        // Try sending a smaller response with error message
+        request->send(500, "application/json", "{\"error\":\"Buffer overflow\",\"count\":" + String(serialLogCount) + ",\"size\":" + String(jsonString.length()) + "}");
+        return;
+      }
+      
+      // Verify JSON is complete by checking it ends with }]
+      if (!jsonString.endsWith("]}") && !jsonString.endsWith("}")) {
+        SerialPrintln("WARNING: JSON response may be incomplete. Length: " + String(jsonString.length()));
+      }
+      
       request->send(200, "application/json", jsonString);
       // Don't clear jsonString immediately - let AsyncWebServer handle it
       // The string will be cleaned up automatically after the response is sent
+    });
+    
+    // Static unit status endpoint - returns cached status from initial scan (no I2C calls)
+    webServer.on("/unit-status-static", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("DEBUG: Static unit status requested");
+      
+      // Use StaticJsonDocument with proper size (16 units, ~100 bytes per unit)
+      StaticJsonDocument<2000> doc;
+      doc["expectedUnits"] = UNITS_AMOUNT;
+      doc["isValid"] = staticUnitStatusValid;
+      
+      JsonArray unitsArray = doc["units"].to<JsonArray>();
+      
+      for (int address = 0; address < 16; address++) {
+        JsonObject unit = unitsArray.add<JsonObject>();
+        unit["address"] = address;
+        unit["isExpected"] = (address < UNITS_AMOUNT);
+        unit["connected"] = staticFoundUnits[address];
+        unit["status"] = staticUnitStatus[address];
+        
+        // Map status codes to text
+        if (staticFoundUnits[address]) {
+          int status = staticUnitStatus[address];
+          if (status == 0) {
+            unit["statusText"] = "Ready";
+          } else if (status == 1) {
+            unit["statusText"] = "Busy";
+          } else if (status == 2) {
+            unit["statusText"] = "Calibrating";
+          } else if (status == 3) {
+            unit["statusText"] = "Calibrating";
+          } else if (status == 4) {
+            unit["statusText"] = "Error";
+          } else if (status == -1) {
+            unit["statusText"] = "Sleeping";
+          } else if (status == -3) {
+            unit["statusText"] = "No Response";
+          } else {
+            unit["statusText"] = "Unknown";
+          }
+        } else {
+          unit["statusText"] = "Not Connected";
+        }
+      }
+      
+      String jsonString;
+      jsonString.reserve(2000);
+      serializeJson(doc, jsonString);
+      
+      if (jsonString.length() == 0) {
+        SerialPrintln("ERROR: JSON serialization failed for /unit-status-static endpoint");
+        request->send(500, "application/json", "{\"error\":\"Serialization failed\"}");
+        return;
+      }
+      
+      request->send(200, "application/json", jsonString);
+    });
+    
+    // Dynamic unit status endpoint - performs live I2C scan (for debug page)
+    webServer.on("/unit-status", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("DEBUG: Dynamic unit status requested (live scan)");
+      
+      // Use StaticJsonDocument with proper size (16 units, ~150 bytes per unit)
+      StaticJsonDocument<3000> doc;
+      doc["scanTime"] = millis();
+      doc["expectedUnits"] = UNITS_AMOUNT;
+      
+      JsonArray unitsArray = doc["units"].to<JsonArray>();
+      
+      for (int address = 0; address < 16; address++) {
+        JsonObject unit = unitsArray.add<JsonObject>();
+        unit["address"] = address;
+        unit["isExpected"] = (address < UNITS_AMOUNT);
+        
+        Wire.beginTransmission(address);
+        byte error = Wire.endTransmission();
+        delay(1); // Reduced delay - allow bus to settle but faster
+        
+        if (error == 0) {
+          unit["connected"] = true;
+          
+          // Try to read status
+          Wire.requestFrom(address, 1, 1);
+          delay(1); // Reduced delay
+          if (Wire.available()) {
+            int status = Wire.read();
+            unit["status"] = status;
+            
+            // Map status codes to text
+            if (status == 0) {
+              unit["statusText"] = "Ready";
+            } else if (status == 1) {
+              unit["statusText"] = "Busy/Moving";
+            } else if (status == 2) {
+              unit["statusText"] = "Calibrating (Searching)";
+            } else if (status == 3) {
+              unit["statusText"] = "Calibrating (Offset)";
+            } else if (status == 4) {
+              unit["statusText"] = "Calibration Error";
+            } else if (status == -1) {
+              unit["statusText"] = "Sleeping";
+            } else {
+              unit["statusText"] = "Unknown (" + String(status) + ")";
+            }
+          } else {
+            unit["status"] = -3;
+            unit["statusText"] = "No Response";
+          }
+        } else if (error == 2) {
+          // NACK - device not found
+          unit["connected"] = false;
+          unit["status"] = -2;
+          unit["statusText"] = "Not Connected";
+        } else {
+          // Other I2C error
+          unit["connected"] = false;
+          unit["status"] = error;
+          unit["statusText"] = "I2C Error (" + String(error) + ")";
+        }
+        
+        yield(); // Allow web server to process
+        delay(2); // Reduced delay between addresses
+      }
+      
+      String jsonString;
+      jsonString.reserve(3000);
+      serializeJson(doc, jsonString);
+      
+      if (jsonString.length() == 0) {
+        SerialPrintln("ERROR: JSON serialization failed for /unit-status endpoint");
+        request->send(500, "application/json", "{\"error\":\"Serialization failed\"}");
+        return;
+      }
+      
+      request->send(200, "application/json", jsonString);
     });
     
     // I2C bus scanner endpoint for diagnostics
@@ -739,7 +896,66 @@ void setup() {
       SerialPrintln("DEBUG: I2C scan completed, found " + String(foundCount) + " devices");
     });
     
-    // Unit Diagnostics endpoints removed (/unit-status and /unit-reset) - section removed from UI
+    // I2C setup scan endpoint (scans all 16 addresses, tests read/write)
+    webServer.on("/i2c-setup-scan", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("DEBUG: I2C setup scan requested");
+      
+      // Run setup scan (this will output to serial log)
+      runI2CSetupScan();
+      
+      // Return simple response (detailed results are in serial log)
+      request->send(200, "text/plain", "I2C setup scan completed. Check serial log for detailed results.");
+    });
+    
+    // I2C diagnostic testing endpoint (comprehensive read/write/speed tests)
+    webServer.on("/i2c-diagnostics", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("DEBUG: I2C diagnostics requested");
+      
+      // Check for optional unit parameter
+      int unitAddress = -1; // -1 means test all units
+      if (request->hasParam("unit")) {
+        unitAddress = request->getParam("unit")->value().toInt();
+        if (unitAddress < 0 || unitAddress >= 16) {
+          unitAddress = -1; // Invalid, test all
+        }
+      }
+      
+      // Check if JSON format requested
+      bool returnJson = request->hasParam("format") && request->getParam("format")->value() == "json";
+      
+      if (returnJson) {
+        // For JSON format, we'll return a simple response and the client can poll the log
+        // The actual diagnostics will run and output to serial log
+        runI2CDiagnostics(unitAddress);
+        
+        StaticJsonDocument<200> doc;
+        doc["status"] = "completed";
+        doc["unit"] = unitAddress;
+        doc["message"] = "Diagnostics completed. Results are in serial log.";
+        
+        String jsonString;
+        serializeJson(doc, jsonString);
+        request->send(200, "application/json", jsonString);
+      } else {
+        // Run diagnostics (this will output to serial log)
+        runI2CDiagnostics(unitAddress);
+        
+        // Return simple response (detailed results are in serial log)
+        String response = "I2C diagnostics completed. Check serial log for detailed results.";
+        if (unitAddress >= 0) {
+          response = "I2C diagnostics completed for unit " + String(unitAddress) + ". Check serial log for detailed results.";
+        }
+        request->send(200, "text/plain", response);
+      }
+    });
+    
+    // I2C Bus Scan endpoint (on-demand scan)
+    webServer.on("/i2c-scan", HTTP_GET, [](AsyncWebServerRequest * request) {
+      SerialPrintln("=== I2C Bus Scan Requested ===");
+      scanI2CBus(); // This stores results in staticFoundUnits[] and staticUnitStatus[] arrays
+      SerialPrintln("=== I2C Bus Scan Complete ===");
+      request->send(200, "text/plain", "OK - I2C bus scan complete. Check serial log for results.");
+    });
     
 #if DEBUG_ENABLE == true
     webServer.on("/exit-debug-mode", HTTP_GET, [](AsyncWebServerRequest * request) {
@@ -1145,22 +1361,58 @@ void setup() {
     delay(250);
     webServer.begin();
     
-    // Wait for all units to finish their initial calibration (they calibrate on startup)
-    // Units can take 5-30 seconds normally, but units with Hall sensor issues may take up to 60 seconds
-    // (they will timeout after 3 full rotations if Hall sensor doesn't detect magnet)
-    SerialPrintln("DEBUG: Waiting for units to finish initial calibration...");
+    // Give web server time to initialize before blocking operations
+    debugStatus = "Web Server Started";
+    SerialPrintln("DEBUG: Status = " + debugStatus);
+    SerialPrintln("DEBUG: Web server started - pages should be accessible now");
+    delay(500); // Allow web server to fully initialize
+    
+    // Skip calibration wait at startup to allow web server to respond immediately
+    // Units will finish calibrating in the background - web server is accessible right away
+    SerialPrintln("DEBUG: Skipping calibration wait - web server is ready immediately");
+    SerialPrintln("DEBUG: Units will finish calibrating in background");
+    SerialPrintln("DEBUG: Web pages are accessible now");
+    
+    // Send initial speed command to all units (quick, non-blocking)
+    int defaultFlapSpeed = convertSpeed(flapSpeed.length() > 0 ? flapSpeed : "80");
+    SerialPrintln("DEBUG: Sending speed commands to all units...");
+    for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
+      writeToUnit(unitIndex, 0, defaultFlapSpeed); // Send space (0) with current speed
+      yield();
+      delay(5); // Small delay between units
+    }
+    SerialPrintln("DEBUG: Speed commands sent to all units");
+    
+    // Calibration wait loop REMOVED - web server needs to respond immediately
+    // Units will finish calibrating in background - web server is accessible right away
+    /*
     unsigned long calibrationWaitStart = millis();
-    unsigned long calibrationWaitTimeout = 60000; // 60 second max wait (increased to handle units with Hall sensor issues)
+    unsigned long calibrationWaitTimeout = 1000;
     int calibrationCheckCount = 0;
-    int consecutiveReadyChecks = 0; // Track consecutive checks where all units are ready
-    const int REQUIRED_CONSECUTIVE_READY = 3; // Require 3 consecutive ready checks (600ms) to ensure units are truly ready
-    unsigned long stuckUnitStartTime[UNITS_AMOUNT]; // Track when each unit started being stuck
-    bool unitStuckTracked[UNITS_AMOUNT] = {false}; // Track if we've started tracking a stuck unit
-    const unsigned long STUCK_UNIT_TIMEOUT = 50000; // If a unit is stuck for 50 seconds, allow system to proceed anyway
+    int consecutiveReadyChecks = 0;
+    const int REQUIRED_CONSECUTIVE_READY = 3;
+    unsigned long stuckUnitStartTime[UNITS_AMOUNT];
+    bool unitStuckTracked[UNITS_AMOUNT] = {false};
+    const unsigned long STUCK_UNIT_TIMEOUT = 50000;
     
     while (millis() - calibrationWaitStart < calibrationWaitTimeout) {
       bool allUnitsReady = true;
       int readyCount = 0;
+      
+      // Periodically resend speed commands to units that are still calibrating
+      // This helps units with I2C communication issues get speed updates
+      static unsigned long lastSpeedUpdate = 0;
+      if (millis() - lastSpeedUpdate > 5000) { // Every 5 seconds
+        for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
+          int status = checkIfMoving(unitIndex);
+          if (status == 2 || status == 3) { // Unit is still calibrating
+            writeToUnit(unitIndex, 0, defaultFlapSpeed); // Resend speed command
+            yield();
+            delay(5);
+          }
+        }
+        lastSpeedUpdate = millis();
+      }
       
       // Check status of all units
       bool hasStuckUnit = false;
@@ -1292,8 +1544,8 @@ void setup() {
         SerialPrintln(")");
       }
       
-      yield();
-      delay(200); // Check every 200ms
+      yield(); // Allow web server to process requests
+      delay(100); // Check every 100ms (faster checks, more yield() calls for web server)
     }
     
     if (millis() - calibrationWaitStart >= calibrationWaitTimeout) {
@@ -1316,6 +1568,7 @@ void setup() {
         }
       }
     }
+    */
     
     debugStatus = "Ready";
     SerialPrintln("DEBUG: Status = " + debugStatus);
@@ -1553,6 +1806,13 @@ void scanI2CBus() {
     yield();
     delay(10);
   }
+  
+  // Store unit status in global arrays for static display on main page
+  for (int i = 0; i < 16; i++) {
+    staticFoundUnits[i] = foundUnits[i];
+    staticUnitStatus[i] = unitStatus[i];
+  }
+  staticUnitStatusValid = true; // Mark data as valid
   
   // Count how many expected units (0 to UNITS_AMOUNT-1) are actually connected
   int connectedExpectedUnits = 0;

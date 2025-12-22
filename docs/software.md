@@ -33,7 +33,10 @@ units, and operate/debug the split-flap display.
         - **Windows:** `C:\Users\<your_username>\.arduinoIDE\plugins\`
         - Create the `plugins` folder if it doesn't exist
      3. Restart Arduino IDE 2.x completely
-     4. The plugin will appear in the command palette (see upload steps below)
+     4. **IMPORTANT:** The plugin does NOT appear in the Tools menu. To access it:
+        - Press `⌘ + Shift + P` (macOS) or `Ctrl + Shift + P` (Windows/Linux) to open the Command Palette
+        - Type "Upload LittleFS" and select the command
+        - The plugin will appear in the command palette (see upload steps below)
    - **IDE 1.x:** install the legacy plugin and use *Tools → ESP8266 LittleFS
      Data Upload*.
 
@@ -49,7 +52,9 @@ units, and operate/debug the split-flap display.
    - **Important:** Close the Serial Monitor if it's open (the serial port must be free)
    - Select *Generic ESP8266 Module* from the board menu
    - Select the correct COM port for your ESP-01S programmer
-   - **IDE 2.x:** Press `⌘ + Shift + P` (macOS) or `Ctrl + Shift + P` (Windows/Linux) to open the command palette, then type "Upload LittleFS" and select it
+   - **IDE 2.x:** 
+     - **IMPORTANT:** Press `⌘ + Shift + P` (macOS) or `Ctrl + Shift + P` (Windows/Linux) to open the Command Palette
+     - Type "Upload LittleFS" and select it (the plugin does NOT appear in the Tools menu)
    - **IDE 1.x:** Use *Tools → ESP8266 LittleFS Data Upload* from the menu
    - Wait for the upload to complete (you'll see "LittleFS Image Uploaded" in the output)
    - **Important:** After LittleFS upload completes, unplug and replug the ESP-01S programmer to reset the device before proceeding to firmware upload
