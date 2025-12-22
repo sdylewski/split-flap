@@ -436,7 +436,8 @@ function setUnitCount(count) {
 	document.getElementById("labelUnits").innerHTML = count;
 	unitCount = count;
 	
-	// Unit selection dropdown removed - Unit Diagnostics section removed
+	// Load unit testing table when unit count is set
+	loadUnitTestingTable();
 }
 
 function setConnectedUnitCount(connected, expected) {
@@ -667,6 +668,9 @@ function showContent() {
 	
 	isPageLoading = false; // Page has finished loading
 	
+	// Load unit testing table
+	loadUnitTestingTable();
+	
 	// Load serial log
 	refreshLog();
 	// Auto-refresh log every 2 seconds
@@ -674,15 +678,93 @@ function showContent() {
 }
 
 // Fetch and display serial log
+// Scan I2C bus on-demand and refresh log to show results
+function scanI2CBus() {
+	var button = document.getElementById("linkActionI2CScan");
+	if (button) {
+		button.style.opacity = "0.5";
+		button.style.pointerEvents = "none";
+		button.textContent = "Scanning...";
+	}
+	
+	var xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+		if (this.readyState == 4) {
+			if (button) {
+				button.style.opacity = "1";
+				button.style.pointerEvents = "auto";
+				button.textContent = "Scan I2C Bus";
+			}
+			
+			if (this.status == 200) {
+				// Scan complete, refresh log after a short delay to show results
+				setTimeout(function() {
+					refreshLog();
+				}, 500);
+			} else {
+				alert("Error scanning I2C bus: Status " + this.status);
+			}
+		}
+	};
+	xhr.onerror = function() {
+		if (button) {
+			button.style.opacity = "1";
+			button.style.pointerEvents = "auto";
+			button.textContent = "Scan I2C Bus";
+		}
+		alert("Network error scanning I2C bus");
+	};
+	xhr.timeout = 60000; // 60 second timeout for scan
+	xhr.open("GET", "/i2c-scan", true);
+	xhr.send();
+}
+
 function refreshLog() {
 	var xhrRequest = new XMLHttpRequest();
+	var container = document.getElementById("containerSerialLog");
+	
+	if (!container) {
+		console.error("refreshLog: containerSerialLog element not found");
+		return;
+	}
+	
 	xhrRequest.onreadystatechange = function () {
-		if (this.readyState == 4 && this.status == 200) {
-			var responseObject = JSON.parse(this.responseText);
-			displaySerialLog(responseObject);
+		if (this.readyState == 4) {
+			if (this.status == 200) {
+				try {
+					var responseObject = JSON.parse(this.responseText);
+					displaySerialLog(responseObject);
+				} catch (e) {
+					console.error("Error parsing log JSON:", e, "Response:", this.responseText.substring(0, 200));
+					if (container) {
+						container.innerHTML = '<div style="color: #f48771;">Error parsing log response: ' + escapeHtml(e.message) + '<br>Response preview: ' + escapeHtml(this.responseText.substring(0, 200)) + '</div>';
+					}
+				}
+			} else {
+				// Request failed - show error
+				console.error("Log request failed with status:", this.status);
+				if (container) {
+					container.innerHTML = '<div style="color: #f48771;">Error loading log: HTTP status ' + this.status + '</div>';
+				}
+			}
+		}
+	};
+	
+	xhrRequest.onerror = function() {
+		console.error("Network error loading log");
+		if (container) {
+			container.innerHTML = '<div style="color: #f48771;">Network error loading log. Check if ESP8266 is responding.</div>';
+		}
+	};
+	
+	xhrRequest.ontimeout = function() {
+		console.error("Log request timed out");
+		if (container) {
+			container.innerHTML = '<div style="color: #f48771;">Log request timed out after 15 seconds.</div>';
 		}
 	};
 
+	xhrRequest.timeout = 15000; // 15 second timeout (increased for reliability)
 	xhrRequest.open("GET", "/log", true);
 	xhrRequest.send();
 }
@@ -692,24 +774,32 @@ function displaySerialLog(logData) {
 	var container = document.getElementById("containerSerialLog");
 	var countElement = document.getElementById("spanLogCount");
 	
+	if (!container) {
+		console.error("containerSerialLog element not found");
+		return;
+	}
+	
 	// Check if there are new messages
 	var currentLogCount = logData.count || 0;
 	var hasNewMessages = currentLogCount !== lastSerialLogCount;
 	
-	// If no new messages, don't update the display
-	if (!hasNewMessages) {
-		return;
+	// Always update on first load (when lastSerialLogCount is 0 and we have data)
+	// or when there are new messages
+	if (!hasNewMessages && lastSerialLogCount !== 0) {
+		return; // Skip update if no new messages and we've already loaded once
 	}
 	
 	// Store full log data for copying
 	fullSerialLogData = logData;
 	
 	// Update count
-	countElement.innerText = currentLogCount;
+	if (countElement) {
+		countElement.innerText = currentLogCount;
+	}
 	lastSerialLogCount = currentLogCount;
 	
 	if (!logData.logs || logData.logs.length === 0) {
-		container.innerHTML = '<div style="color: #888;">No log messages yet.</div>';
+		container.innerHTML = '<div style="color: #888;">No log messages yet. (Count: ' + currentLogCount + ')</div>';
 		return;
 	}
 	
@@ -941,4 +1031,245 @@ function copySerialLog() {
 	document.body.removeChild(textArea);
 }
 
-	// Unit Diagnostics functions removed - section removed from UI
+// Unit Testing Functions
+var unitTestResults = {}; // Store test results by unit number
+var unitTestInProgress = {}; // Track which units are being tested
+
+// Load unit testing table
+function loadUnitTestingTable() {
+	var tbody = document.getElementById("unitTestingTableBody");
+	if (!tbody) return;
+	
+	var html = "";
+	for (var i = 0; i < 16; i++) {
+		var isExpected = i < unitCount;
+		var testStatus = unitTestResults[i] ? unitTestResults[i].status : "not_tested";
+		var lastTestTime = unitTestResults[i] ? unitTestResults[i].timestamp : null;
+		var statusText = "Not tested";
+		var statusColor = "#888";
+		
+		if (unitTestInProgress[i]) {
+			statusText = "Testing...";
+			statusColor = "#dcdcaa";
+		} else if (testStatus === "pass") {
+			statusText = "✓ Pass";
+			statusColor = "#4ec9b0";
+		} else if (testStatus === "fail") {
+			statusText = "✗ Fail";
+			statusColor = "#f48771";
+		} else if (testStatus === "not_tested") {
+			statusText = "Not tested";
+			statusColor = "#888";
+		}
+		
+		var lastTestDisplay = lastTestTime ? new Date(lastTestTime).toLocaleTimeString() : "-";
+		
+		html += "<tr style='border-bottom: 1px solid #2d2d30;'>";
+		html += "<td style='padding: 8px; border-right: 1px solid #2d2d30; font-weight: bold;'>" + i;
+		if (isExpected) {
+			html += " <span style='color: #4ec9b0; font-size: 0.8em;'>(Expected)</span>";
+		}
+		html += "</td>";
+		html += "<td style='padding: 8px; border-right: 1px solid #2d2d30; color: " + statusColor + "'>" + statusText + "</td>";
+		html += "<td style='padding: 8px; border-right: 1px solid #2d2d30; color: #888;'>" + lastTestDisplay + "</td>";
+		html += "<td style='padding: 8px;'>";
+		html += "<button onclick='testUnit(" + i + ")' style='padding: 5px 10px; font-size: 0.85em; background: #0e639c; color: white; border: none; border-radius: 3px; cursor: pointer;'";
+		if (unitTestInProgress[i]) {
+			html += " disabled";
+		}
+		html += ">" + (unitTestInProgress[i] ? "Testing..." : "Test") + "</button>";
+		html += "</td>";
+		html += "</tr>";
+	}
+	
+	tbody.innerHTML = html;
+}
+
+// Test a specific unit
+function testUnit(unitNumber) {
+	if (unitTestInProgress[unitNumber]) {
+		return; // Already testing
+	}
+	
+	unitTestInProgress[unitNumber] = true;
+	loadUnitTestingTable();
+	
+	// Show results container
+	var resultsContainer = document.getElementById("containerUnitTestResults");
+	var resultsContent = document.getElementById("unitTestResultsContent");
+	var unitNumberSpan = document.getElementById("testedUnitNumber");
+	
+	if (resultsContainer) {
+		resultsContainer.style.display = "block";
+	}
+	if (unitNumberSpan) {
+		unitNumberSpan.textContent = unitNumber;
+	}
+	if (resultsContent) {
+		resultsContent.innerHTML = "<div style='color: #888;'>Running diagnostics for unit " + unitNumber + "...</div>";
+	}
+	
+	// Trigger diagnostics
+	var xhr = new XMLHttpRequest();
+	xhr.onreadystatechange = function() {
+		if (this.readyState == 4) {
+			if (this.status == 200) {
+				// Diagnostics started, now poll the log for results
+				setTimeout(function() {
+					pollUnitTestResults(unitNumber);
+				}, 2000); // Wait 2 seconds for diagnostics to start
+			} else {
+				unitTestInProgress[unitNumber] = false;
+				loadUnitTestingTable();
+				if (resultsContent) {
+					resultsContent.innerHTML = "<div style='color: #f48771;'>Error starting test: HTTP " + this.status + "</div>";
+				}
+			}
+		}
+	};
+	xhr.onerror = function() {
+		unitTestInProgress[unitNumber] = false;
+		loadUnitTestingTable();
+		if (resultsContent) {
+			resultsContent.innerHTML = "<div style='color: #f48771;'>Network error starting test</div>";
+		}
+	};
+	xhr.timeout = 30000;
+	xhr.open("GET", "/i2c-diagnostics?unit=" + unitNumber + "&format=json", true);
+	xhr.send();
+}
+
+// Poll log for unit test results
+function pollUnitTestResults(unitNumber) {
+	var xhr = new XMLHttpRequest();
+	var resultsContent = document.getElementById("unitTestResultsContent");
+	
+	xhr.onreadystatechange = function() {
+		if (this.readyState == 4 && this.status == 200) {
+			try {
+				var data = JSON.parse(this.responseText);
+				var logText = "";
+				var foundUnitSection = false;
+				var collectingResults = false;
+				var resultLines = [];
+				
+				if (data.logs && data.logs.length > 0) {
+					// Look for the unit's test section in the log
+					for (var i = 0; i < data.logs.length; i++) {
+						var msg = data.logs[i].message || "";
+						var timestamp = (data.logs[i].timestamp / 1000).toFixed(1) + "s";
+						
+						// Check if we're in the unit's test section
+						if (msg.indexOf("--- Unit " + unitNumber + " ---") >= 0) {
+							foundUnitSection = true;
+							collectingResults = true;
+							resultLines = [];
+						}
+						
+						// Check if we've hit the summary (end of this unit's tests)
+						if (collectingResults && msg.indexOf("=== I2C Diagnostic Summary ===") >= 0) {
+							collectingResults = false;
+						}
+						
+						// Collect lines for this unit
+						if (collectingResults && foundUnitSection) {
+							resultLines.push("[" + timestamp + "] " + msg);
+						}
+					}
+					
+					// Also include summary if available
+					if (foundUnitSection) {
+						var summaryStart = false;
+						for (var i = 0; i < data.logs.length; i++) {
+							var msg = data.logs[i].message || "";
+							var timestamp = (data.logs[i].timestamp / 1000).toFixed(1) + "s";
+							
+							if (msg.indexOf("=== I2C Diagnostic Summary ===") >= 0) {
+								summaryStart = true;
+							}
+							
+							if (summaryStart) {
+								resultLines.push("[" + timestamp + "] " + msg);
+								// Stop after summary
+								if (msg.indexOf("All I2C diagnostic tests") >= 0 || msg.indexOf("Some I2C diagnostic tests") >= 0) {
+									break;
+								}
+							}
+						}
+					}
+					
+					if (resultLines.length > 0) {
+						logText = resultLines.join("\n");
+						
+						// Determine pass/fail
+						var passed = logText.indexOf("✓ PASS") >= 0 && logText.indexOf("✗ FAIL") === -1;
+						var hasFail = logText.indexOf("✗ FAIL") >= 0;
+						
+						// Store results
+						unitTestResults[unitNumber] = {
+							status: hasFail ? "fail" : (passed ? "pass" : "not_tested"),
+							timestamp: Date.now(),
+							log: logText
+						};
+						
+						// Display results
+						if (resultsContent) {
+							var colorClass = hasFail ? "error" : (passed ? "debug" : "");
+							resultsContent.innerHTML = "<div class='" + colorClass + "'>" + escapeHtml(logText) + "</div>";
+						}
+						
+						unitTestInProgress[unitNumber] = false;
+						loadUnitTestingTable();
+					} else {
+						// Still waiting for results, poll again
+						setTimeout(function() {
+							pollUnitTestResults(unitNumber);
+						}, 1000);
+					}
+				} else {
+					// No logs yet, poll again
+					setTimeout(function() {
+						pollUnitTestResults(unitNumber);
+					}, 1000);
+				}
+			} catch (e) {
+				console.error("Error parsing log:", e);
+				unitTestInProgress[unitNumber] = false;
+				loadUnitTestingTable();
+				if (resultsContent) {
+					resultsContent.innerHTML = "<div style='color: #f48771;'>Error parsing results: " + e.message + "</div>";
+				}
+			}
+		}
+	};
+	xhr.onerror = function() {
+		unitTestInProgress[unitNumber] = false;
+		loadUnitTestingTable();
+		if (resultsContent) {
+			resultsContent.innerHTML = "<div style='color: #f48771;'>Network error polling results</div>";
+		}
+	};
+	xhr.timeout = 10000;
+	xhr.open("GET", "/log", true);
+	xhr.send();
+}
+
+// Close unit test results
+function closeUnitTestResults() {
+	var resultsContainer = document.getElementById("containerUnitTestResults");
+	if (resultsContainer) {
+		resultsContainer.style.display = "none";
+	}
+}
+
+// Helper function to escape HTML
+function escapeHtml(text) {
+	var map = {
+		'&': '&amp;',
+		'<': '&lt;',
+		'>': '&gt;',
+		'"': '&quot;',
+		"'": '&#039;'
+	};
+	return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
