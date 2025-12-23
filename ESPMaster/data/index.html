@@ -95,6 +95,12 @@
 							<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeClock" name="deviceMode" value="clock" />
 							<label for="modeClock">Clock Mode</label>
 						</p>
+						<p style="margin-left: 20px; margin-top: 5px;">
+							<input type="checkbox" id="inputClockFormat24H" onchange="updateClockFormatHiddenInput(this.checked)" />
+							<label for="inputClockFormat24H">24-hour format (HH:MM)</label>
+							<span style="font-size: 0.85em; color: #888; margin-left: 10px;">Unchecked = 12-hour format (hh:mma)</span>
+							<input type="hidden" id="inputClockFormat24HHidden" name="clockFormat24H" value="true" />
+						</p>
 
 						<p>
 							<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeDate" name="deviceMode" value="date" />

@@ -108,11 +108,15 @@ void showMessage(String message, int flapSpeed) {
   //Wait while display is still moving - ADD YIELD TO PREVENT HANGING
   SerialPrintln("Unit calls are enabled. Will display message");
   unsigned long waitStart = millis();
-  unsigned long waitTimeout = 30000; // 30 second timeout to prevent infinite hang
+  unsigned long waitTimeout = 5000; // Reduced to 5 seconds - don't wait too long
+  int checkCount = 0;
   while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
-    SerialPrintln("Waiting for display to stop");
+    checkCount++;
+    if (checkCount % 2 == 0) { // Only log every other check to reduce noise
+      SerialPrintln("Waiting for display to stop");
+    }
     yield(); // CRITICAL: Allow web server to process requests
-    delay(500);
+    delay(200); // Reduced from 500ms to 200ms for faster checking
   }
   
   if (millis() - waitStart >= waitTimeout) {
@@ -141,11 +145,15 @@ void showMessage(String message, int flapSpeed) {
 
   //Wait for the display to stop moving before exit - ADD YIELD TO PREVENT HANGING
   waitStart = millis();
-  waitTimeout = 30000; // 30 second timeout
+  waitTimeout = 5000; // Reduced to 5 seconds
+  checkCount = 0;
   while (isDisplayMoving() && (millis() - waitStart < waitTimeout)) {
-    SerialPrintln("Waiting for display to stop now message is display");
+    checkCount++;
+    if (checkCount % 5 == 0) { // Only log every 5th check to reduce noise
+      SerialPrintln("Waiting for display to stop now message is display");
+    }
     yield(); // CRITICAL: Allow web server to process requests
-    delay(100);
+    delay(200); // Reduced from 100ms to 200ms (check less frequently)
   }
   
   if (millis() - waitStart >= waitTimeout) {
@@ -199,22 +207,25 @@ bool isDisplayMoving() {
     // Add delay between I2C requests to prevent bus congestion
     // Only delay if not the last unit (optimization)
     if (unitIndex < UNITS_AMOUNT - 1) {
-      delay(5); // 5ms delay between each unit check
+      delay(2); // Reduced from 5ms to 2ms for faster checking
       yield(); // Allow web server to process
     }
     
+    // Only return true if unit is actually moving (status == 1)
+    // Don't treat sleeping/not responding units as "moving" - they're stopped
     if (displayState[unitIndex] == 1) {
       SerialPrint("Unit ");
       SerialPrint(unitIndex);
       SerialPrintln(" is busy (moving)");
       return true;
     } 
-    //If unit is not available through i2c
+    // If unit is sleeping/not responding (-1), treat as stopped (not moving)
+    // This prevents waiting forever when a unit is offline
     else if (displayState[unitIndex] == -1) {
       SerialPrint("Unit ");
       SerialPrint(unitIndex);
-      SerialPrintln(" is sleeping/not responding");
-      return true;
+      SerialPrintln(" is sleeping/not responding (treating as stopped)");
+      // Continue checking other units - don't return true
     }
   }
 

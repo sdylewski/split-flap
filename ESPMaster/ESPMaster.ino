@@ -57,7 +57,7 @@
 #define SERIAL_ENABLE       false   //Option to enable serial debug messages
 #define UNIT_CALLS_DISABLE  false   //Option to disable the call to the units so can just debug the ESP with no connections
 #define OTA_ENABLE          true    //Option to enable OTA functionality
-#define UNITS_AMOUNT        10       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
+#define UNITS_AMOUNT        9       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
 #define SERIAL_BAUDRATE     57600  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
 #define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
@@ -65,6 +65,7 @@
 #define PAGE_LOAD_DEBUG_ENABLE false  //Enable page load debug blocks: browser errors panel and page load debug log at top of page (set to true for troubleshooting page loading issues)
 #define I2C_DIAGNOSTIC_ENABLE false  //Enable I2C diagnostic testing (DISABLED by default - blocks web server startup; use /i2c-diagnostics endpoint instead)
 #define I2C_SETUP_SCAN_ENABLE false  //Enable I2C setup scan at startup (DISABLED by default - blocks web server startup; use /i2c-setup-scan endpoint instead)
+#define CLOCK_FORMAT_24H true  //Default clock format: true = 24-hour (HH:MM), false = 12-hour (hh:mma)
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices
@@ -164,7 +165,9 @@ const char* timezoneString = "America/Los_Angeles";
 //If you want to have a different date or clock format change these two
 //Complete table with every char: https://github.com/ropg/ezTime#getting-date-and-time
 const char* dateFormat = "d.m.Y"; //Examples: d.m.Y -> 11.09.2021, D M y -> SAT SEP 21
-const char* clockFormat = "H:i"; //Examples: H:i -> 21:19, h:ia -> 09:19PM
+const char* clockFormat24H = "H:i"; //24-hour format: H:i -> 21:19
+const char* clockFormat12H = "h:ia"; //12-hour format: h:ia -> 09:19pm
+// Note: clockFormat is now dynamically set based on user preference (stored in clockFormat24Hour variable)
 
 //How long to show a message for when a scheduled message is shown for
 const int scheduledMessageDisplayTimeMillis = 7500;
@@ -215,6 +218,7 @@ const char* PARAM_TRAIN_STATION_DELAY = "trainStationDelay";
 const char* PARAM_RANDOM_PHRASE_LIST = "randomPhraseList";
 const char* PARAM_RANDOM_PHRASE_MIN_DELAY = "randomPhraseMinDelay";
 const char* PARAM_RANDOM_PHRASE_MAX_DELAY = "randomPhraseMaxDelay";
+const char* PARAM_CLOCK_FORMAT_24H = "clockFormat24H";
 const char* PARAM_SCHEDULE_ENABLED = "scheduleEnabled";
 const char* PARAM_SCHEDULE_DATE_TIME = "scheduledDateTimeUnix";
 const char* PARAM_SCHEDULE_SHOW_INDEFINITELY = "scheduleShowIndefinitely";
@@ -245,6 +249,7 @@ const char* trainStationDelayPath = "/trainstationdelay.txt";
 const char* randomPhraseListPath = "/randomphraselist.txt";
 const char* randomPhraseMinDelayPath = "/randomphasemindelay.txt";
 const char* randomPhraseMaxDelayPath = "/randomphasemaxdelay.txt";
+const char* clockFormat24HourPath = "/clockformat24h.txt";
 
 //Variables for storing things for checking and use in normal running
 String alignment = "";
@@ -256,6 +261,7 @@ String trainStationDelaySeconds = "30"; // Default 30 seconds
 String randomPhraseList = ""; // Comma-separated list of phrases
 String randomPhraseMinDelaySeconds = "10"; // Default 10 seconds
 String randomPhraseMaxDelaySeconds = "60"; // Default 60 seconds
+String clockFormat24Hour = ""; // "true" for 24-hour format, "false" for 12-hour format (defaults to CLOCK_FORMAT_24H)
 String lastWrittenText = "";
 String lastReceivedMessageDateTime = "";
 bool alignmentUpdated = false;
@@ -291,6 +297,11 @@ bool isInOtaMode = false;
 
 // LED Debugging variables
 String debugStatus = "";
+
+// I2C Diagnostic state (for async execution)
+bool i2cDiagnosticPending = false;
+int i2cDiagnosticUnitAddress = -1;
+unsigned long i2cDiagnosticStartTime = 0;
 
 // Serial log buffer for web interface (circular buffer, stores last 200 messages)
 #define SERIAL_LOG_SIZE 100
@@ -569,6 +580,7 @@ void setup() {
       minimalDoc["randomPhraseList"] = randomPhraseList;
       minimalDoc["randomPhraseMinDelay"] = atol(randomPhraseMinDelaySeconds.c_str());
       minimalDoc["randomPhraseMaxDelay"] = atol(randomPhraseMaxDelaySeconds.c_str());
+      minimalDoc["clockFormat24H"] = (clockFormat24Hour == "true");
       minimalDoc["wifiStatus"] = WiFi.status() == WL_CONNECTED ? "Connected" : "Disconnected";
       minimalDoc["wifiRssi"] = WiFi.status() == WL_CONNECTED ? WiFi.RSSI() : 0;
       minimalDoc["wifiIp"] = WiFi.status() == WL_CONNECTED ? WiFi.localIP().toString() : "";
@@ -923,30 +935,30 @@ void setup() {
       // Check if JSON format requested
       bool returnJson = request->hasParam("format") && request->getParam("format")->value() == "json";
       
+      // Queue diagnostics to run in loop() - don't block the handler
+      i2cDiagnosticPending = true;
+      i2cDiagnosticUnitAddress = unitAddress;
+      i2cDiagnosticStartTime = millis();
+      
+      // Respond immediately - handler returns right away
       if (returnJson) {
-        // For JSON format, we'll return a simple response and the client can poll the log
-        // The actual diagnostics will run and output to serial log
-        runI2CDiagnostics(unitAddress);
-        
         StaticJsonDocument<200> doc;
-        doc["status"] = "completed";
+        doc["status"] = "started";
         doc["unit"] = unitAddress;
-        doc["message"] = "Diagnostics completed. Results are in serial log.";
+        doc["message"] = "Diagnostics queued. Poll /log endpoint for results.";
         
         String jsonString;
         serializeJson(doc, jsonString);
         request->send(200, "application/json", jsonString);
       } else {
-        // Run diagnostics (this will output to serial log)
-        runI2CDiagnostics(unitAddress);
-        
-        // Return simple response (detailed results are in serial log)
-        String response = "I2C diagnostics completed. Check serial log for detailed results.";
+        String response = "I2C diagnostics queued. Check serial log for detailed results.";
         if (unitAddress >= 0) {
-          response = "I2C diagnostics completed for unit " + String(unitAddress) + ". Check serial log for detailed results.";
+          response = "I2C diagnostics queued for unit " + String(unitAddress) + ". Check serial log for detailed results.";
         }
         request->send(200, "text/plain", response);
       }
+      
+      // Handler returns immediately - diagnostics will run in loop()
     });
     
     // I2C Bus Scan endpoint (on-demand scan)
@@ -1111,6 +1123,16 @@ void setup() {
             }
           }
 
+          //HTTP POST Clock Format (24H or 12H)
+          if (p->name() == PARAM_CLOCK_FORMAT_24H) {
+            String receivedValue = p->value();
+            if (receivedValue == "true" || receivedValue == "false") {
+              clockFormat24Hour = receivedValue;
+            } else {
+              SerialPrintln("Clock format value invalid. Using default.");
+            }
+          }
+
           //HTTP POST Flap Speed Slider value
           if (p->name() == PARAM_FLAP_SPEED) {
             newFlapSpeedValue = p->value().c_str();
@@ -1217,6 +1239,11 @@ void setup() {
         if (randomPhraseMaxDelaySeconds != "") {
           writeFile(LittleFS, randomPhraseMaxDelayPath, randomPhraseMaxDelaySeconds.c_str());
           SerialPrintln("Random Phrase Max Delay Updated: " + randomPhraseMaxDelaySeconds + " seconds");
+        }
+        
+        if (clockFormat24Hour != "") {
+          writeFile(LittleFS, clockFormat24HourPath, clockFormat24Hour.c_str());
+          SerialPrintln("Clock Format Updated: " + String(clockFormat24Hour == "true" ? "24-hour" : "12-hour"));
         }
 
         //If its a new scheduled message, add it to the backlog and proceed, don't want to change device mode
@@ -1683,6 +1710,17 @@ void loop() {
     delay(100);
     return;
   }
+  
+  // Run pending I2C diagnostics (queued from web endpoint)
+  if (i2cDiagnosticPending) {
+    // Small delay to ensure web response was sent
+    if (millis() - i2cDiagnosticStartTime > 100) {
+      SerialPrintln("DEBUG: Running queued I2C diagnostics");
+      i2cDiagnosticPending = false; // Clear flag before running (in case it takes a while)
+      runI2CDiagnostics(i2cDiagnosticUnitAddress);
+      SerialPrintln("DEBUG: I2C diagnostics completed");
+    }
+  }
 
   if (isPendingUnitsReset) {
     SerialPrintln("Reseting Units now...");
@@ -1734,7 +1772,9 @@ void loop() {
       showText(timezone.dateTime(dateFormat));
     } 
     else if (deviceMode == DEVICE_MODE_CLOCK) {
-      showText(timezone.dateTime(clockFormat));
+      // Use 24-hour or 12-hour format based on user preference
+      String format = (clockFormat24Hour == "false") ? clockFormat12H : clockFormat24H;
+      showText(timezone.dateTime(format.c_str()));
       }
     } else {
       // Web request is active, skip display update to keep web server responsive
