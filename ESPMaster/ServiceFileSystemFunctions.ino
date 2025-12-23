@@ -18,6 +18,10 @@ void loadValuesFromFileSystem() {
   randomPhraseList = readFile(LittleFS, randomPhraseListPath, "");
   randomPhraseMinDelaySeconds = readFile(LittleFS, randomPhraseMinDelayPath, "10");
   randomPhraseMaxDelaySeconds = readFile(LittleFS, randomPhraseMaxDelayPath, "60");
+  
+  // Load clock format (default to 24-hour based on CLOCK_FORMAT_24H flag)
+  String defaultClockFormat = CLOCK_FORMAT_24H ? "true" : "false";
+  clockFormat24Hour = readFile(LittleFS, clockFormat24HourPath, defaultClockFormat);
 
   String scheduledMessagesJson = readFile(LittleFS, scheduledMessagesPath, "");
   if (scheduledMessagesJson != "") {    
@@ -34,6 +38,7 @@ void loadValuesFromFileSystem() {
   SerialPrintln("   Random Phrase List: " + String(randomPhraseList.length()) + " characters");
   SerialPrintln("   Random Phrase Min Delay: " + randomPhraseMinDelaySeconds + " seconds");
   SerialPrintln("   Random Phrase Max Delay: " + randomPhraseMaxDelaySeconds + " seconds");
+  SerialPrintln("   Clock Format: " + String(clockFormat24Hour == "true" ? "24-hour" : "12-hour"));
   SerialPrint("   Scheduled Message Count: ");
   SerialPrintln(scheduledMessages.size());
 }
