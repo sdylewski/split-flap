@@ -583,19 +583,31 @@ void recordFlapPosition() {
   // Show current calculations if we have enough measurements
   if (measurementCount >= 2) {
     // Calculate current steps per flap
+    // Skip the first difference (measurement[1] - measurement[0]) for accuracy
     long sumDiffs = 0;
-    for (int i = 0; i < measurementCount - 1; i++) {
-      sumDiffs += (measuredPositions[i + 1] - measuredPositions[i]);
+    int validDiffs = 0;
+    if (measurementCount > 2) {
+      // Start from i=1 (skip first difference from marker edge)
+      for (int i = 1; i < measurementCount - 1; i++) {
+        sumDiffs += (measuredPositions[i + 1] - measuredPositions[i]);
+        validDiffs++;
+      }
+    } else {
+      // Only 2 measurements - use the only difference available
+      sumDiffs = measuredPositions[1] - measuredPositions[0];
+      validDiffs = 1;
     }
-    long avgStepsPerFlap = sumDiffs / (measurementCount - 1);
+    long avgStepsPerFlap = validDiffs > 0 ? (sumDiffs / validDiffs) : 0;
     
     Serial.print(F("Current steps per flap: "));
     Serial.print(avgStepsPerFlap);
     Serial.print(F(" steps"));
     if (measurementCount > 2) {
       Serial.print(F(" (from "));
-      Serial.print(measurementCount - 1);
-      Serial.print(F(" differences)"));
+      Serial.print(validDiffs);
+      Serial.print(F(" differences, excluding first measurement from marker edge)"));
+    } else {
+      Serial.print(F(" (from 1 difference - less accurate, need more measurements)"));
     }
     Serial.println();
     
@@ -698,22 +710,51 @@ void finishCalibration() {
     }
   }
   
+  // Declare variables outside if/else blocks so they're accessible throughout the function
   long finalOffset;
+  long stepsToBlankEdge = 0;
+  long avgStepsPerFlap = 0; // Measured value (for reporting/debugging only)
+  long halfFlap = 0;
+  long stepsPerFlapTheoretical = (long)(STEPS_PER_FLAP + 0.5); // Theoretical value (~45 steps) - used for calculation
+  long stepsPerFlapMeasured = 0; // Measured value (for reporting only)
+  
+  // Calculate measured steps per flap from user measurements (for information/debugging only)
+  // Skip the first difference (measurement[1] - measurement[0]) because measurement[0] is at the marker edge
+  // and the distance to measurement[1] may not represent a full flap interval accurately.
+  // Start from measurement[2] - measurement[1] onwards for more accurate average.
+  if (measurementCount > 2) {
+    // We need at least 3 measurements to calculate average (skip first difference)
+    long sumDiffs = 0;
+    int validDiffs = 0;
+    // Start from i=1 (skip the first difference from marker edge to first flap)
+    for (int i = 1; i < measurementCount - 1; i++) {
+      long diff = measuredPositions[i + 1] - measuredPositions[i];
+      sumDiffs += diff;
+      validDiffs++;
+    }
+    if (validDiffs > 0) {
+      avgStepsPerFlap = sumDiffs / validDiffs;
+      stepsPerFlapMeasured = avgStepsPerFlap;
+    } else {
+      avgStepsPerFlap = stepsPerFlapTheoretical;
+      stepsPerFlapMeasured = stepsPerFlapTheoretical;
+    }
+  } else if (measurementCount > 1) {
+    // Only 2 measurements - can't skip first, but this is less accurate
+    avgStepsPerFlap = measuredPositions[1] - measuredPositions[0];
+    stepsPerFlapMeasured = avgStepsPerFlap;
+  } else {
+    avgStepsPerFlap = stepsPerFlapTheoretical; // Fallback to theoretical if only one measurement
+    stepsPerFlapMeasured = stepsPerFlapTheoretical;
+  }
+  
+  // Calculate half-flap using THEORETICAL value (not measured) for consistent calibration
+  halfFlap = stepsPerFlapTheoretical / 2;
+  
   if (blankFlapMeasurementIndex >= 0) {
     // We have a measurement for the blank flap - use the actual measured position
-    long stepsToBlankEdge = measuredPositions[blankFlapMeasurementIndex] - measuredPositions[0];
-    // Calculate half flap from actual measured steps per flap
-    long avgStepsPerFlap = 0;
-    if (measurementCount > 1) {
-      long sumDiffs = 0;
-      for (int i = 0; i < measurementCount - 1; i++) {
-        sumDiffs += (measuredPositions[i + 1] - measuredPositions[i]);
-      }
-      avgStepsPerFlap = sumDiffs / (measurementCount - 1);
-    } else {
-      avgStepsPerFlap = (long)(STEPS_PER_FLAP + 0.5); // Fallback to theoretical if only one measurement
-    }
-    long halfFlap = avgStepsPerFlap / 2;
+    stepsToBlankEdge = measuredPositions[blankFlapMeasurementIndex] - measuredPositions[0];
+    // Use theoretical half-flap for offset calculation (consistent across all units)
     finalOffset = stepsToBlankEdge + halfFlap;
   } else {
     // Fallback: calculate from flap indices if blank flap wasn't measured
@@ -721,13 +762,13 @@ void finishCalibration() {
     int directBackward = firstMeasurementFlapIndex - BLANK_FLAP_INDEX;
     int wrapAroundBackward = (AMOUNTFLAPS - firstMeasurementFlapIndex + BLANK_FLAP_INDEX) % AMOUNTFLAPS;
     int flapsBackwardToBlank = (directBackward <= wrapAroundBackward) ? directBackward : wrapAroundBackward;
-    long stepsPerFlap = (long)(STEPS_PER_FLAP + 0.5);
-    long halfFlap = stepsPerFlap / 2;
-    finalOffset = ((long)flapsBackwardToBlank * stepsPerFlap) + halfFlap;
+    // Use theoretical steps per flap for calculation
+    finalOffset = ((long)flapsBackwardToBlank * stepsPerFlapTheoretical) + halfFlap;
   }
   
   // Warn if offset is very small (marker is at end of blank flap range)
-  long minOffsetWarning = avgStepsPerFlap > 0 ? avgStepsPerFlap : (long)(STEPS_PER_FLAP + 0.5);
+  // Use theoretical value for warning threshold (consistent)
+  long minOffsetWarning = stepsPerFlapTheoretical;
   if (finalOffset < minOffsetWarning) {
     Serial.println();
     Serial.println(F("========================================"));
@@ -782,18 +823,33 @@ void finishCalibration() {
     Serial.print(F("Steps to blank flap edge: "));
     Serial.print(stepsToBlankEdge);
     Serial.println(F(" steps (measured)"));
-    Serial.print(F("Average steps per flap: "));
-    Serial.print(avgStepsPerFlap);
-    Serial.println(F(" steps (from measurements)"));
+    Serial.print(F("Measured steps per flap: "));
+    Serial.print(stepsPerFlapMeasured);
+    Serial.println(F(" steps (from user measurements - for reference only)"));
+    Serial.print(F("Theoretical steps per flap: "));
+    Serial.print(stepsPerFlapTheoretical);
+    Serial.println(F(" steps (used for offset calculation)"));
     Serial.print(F("Half flap (to center): "));
     Serial.print(halfFlap);
-    Serial.println(F(" steps"));
+    Serial.print(F(" steps (calculated from theoretical: "));
+    Serial.print(stepsPerFlapTheoretical);
+    Serial.println(F(" / 2)"));
     Serial.print(F("Final offset: "));
     Serial.print(finalOffset);
-    Serial.println(F(" steps"));
+    Serial.print(F(" steps ("));
+    Serial.print(stepsToBlankEdge);
+    Serial.print(F(" + "));
+    Serial.print(halfFlap);
+    Serial.println(F(")"));
   } else {
     // Fallback calculation
     Serial.println(F("(Using fallback calculation - blank flap not measured)"));
+    Serial.print(F("Theoretical steps per flap: "));
+    Serial.print(stepsPerFlapTheoretical);
+    Serial.println(F(" steps"));
+    Serial.print(F("Half flap: "));
+    Serial.print(halfFlap);
+    Serial.println(F(" steps"));
     Serial.print(F("Final offset: "));
     Serial.print(finalOffset);
     Serial.println(F(" steps"));
@@ -877,9 +933,12 @@ void finishCalibration() {
   Serial.print(F("Final Offset: "));
   Serial.print(finalOffset);
   Serial.println(F(" steps"));
-  Serial.print(F("Steps per Flap: "));
-  Serial.print(stepsPerFlap);
-  Serial.println(F(" steps"));
+  Serial.print(F("Measured Steps per Flap: "));
+  Serial.print(stepsPerFlapMeasured);
+  Serial.println(F(" steps (from user measurements - for reference only)"));
+  Serial.print(F("Theoretical Steps per Flap: "));
+  Serial.print(stepsPerFlapTheoretical);
+  Serial.println(F(" steps (used for offset calculation)"));
   Serial.print(F("Measurements Used: "));
   Serial.print(measurementCount);
   Serial.println(F(" of 5"));
