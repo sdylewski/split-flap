@@ -57,7 +57,7 @@
 #define SERIAL_ENABLE       false   //Option to enable serial debug messages
 #define UNIT_CALLS_DISABLE  false   //Option to disable the call to the units so can just debug the ESP with no connections
 #define OTA_ENABLE          true    //Option to enable OTA functionality
-#define UNITS_AMOUNT        9       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
+#define UNITS_AMOUNT        10       //Amount of connected units !IMPORTANT TO BE SET CORRECTLY!
 #define SERIAL_BAUDRATE     57600  //Serial debugging BAUD rate
 #define WIFI_USE_DIRECT     true   //Option to either direct connect to a WiFi Network or setup a AP to configure WiFi. Setting to false will setup as a AP.
 #define ESP01S_LED_ENABLE   true   //Option to enable LED error indication on ESP-01S (set to false if not using ESP-01S or LED)
@@ -65,7 +65,7 @@
 #define PAGE_LOAD_DEBUG_ENABLE false  //Enable page load debug blocks: browser errors panel and page load debug log at top of page (set to true for troubleshooting page loading issues)
 #define I2C_DIAGNOSTIC_ENABLE false  //Enable I2C diagnostic testing (DISABLED by default - blocks web server startup; use /i2c-diagnostics endpoint instead)
 #define I2C_SETUP_SCAN_ENABLE false  //Enable I2C setup scan at startup (DISABLED by default - blocks web server startup; use /i2c-setup-scan endpoint instead)
-#define CLOCK_FORMAT_24H true  //Default clock format: true = 24-hour (HH:MM), false = 12-hour (hh:mma)
+#define CLOCK_FORMAT_24H false  //Default clock format: true = 24-hour (HH:MM), false = 12-hour (hh:mma)
 
 /*
   EXPERIMENTAL: Try to use your Router when possible to set a Static IP address for your device to avoid conflicts with other devices

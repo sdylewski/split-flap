@@ -16,7 +16,7 @@
   - Fixed calibration startup: Handles case where unit reboots while already at marker position
 *********/
 
-#define SERIAL_ENABLE // uncomment for serial debug communication
+//#define SERIAL_ENABLE // uncomment for serial debug communication
 //#define TEST_ENABLE   // uncomment for Test mode. Rotates through a few character to make sure unit is working. These characters should be displayed in the correct order: " ", "Z", "A", "U", "N", "?", "0", "1", "2", "9"
 
 #include <Arduino.h>
@@ -243,6 +243,7 @@ void rotateToLetter(int toLetter) {
 #endif
     //go to letter, but only if available (>-1)
     if (posLetter > -1) { //check if letter exists
+      bool motorStarted = false;
       //check if letter is on higher index, then no full rotaion is needed
       if (posLetter >= posCurrentLetter) {
 #ifdef SERIAL_ENABLE
@@ -252,6 +253,7 @@ void rotateToLetter(int toLetter) {
         //go directly to next letter, get steps from current letter to target letter
         int diffPosition = posLetter - posCurrentLetter;
         startMotor();
+        motorStarted = true;
         stepper.setSpeed(stepperSpeed);
         //doing the rotation letterwise
         for (int i = 0; i < diffPosition; i++) {
@@ -271,8 +273,14 @@ void rotateToLetter(int toLetter) {
         SerialPrintTimestamp();
         Serial.println(F("full rotation incl. calibration"));
 #endif
-        calibrate(false); //calibrate revolver and do not stop motor
-        //startMotor();
+        startMotor(); // Ensure motor is started before calibration
+        motorStarted = true;
+        int calResult = calibrate(false); //calibrate revolver and do not stop motor
+        if (calResult < 0) {
+          // Calibration failed - stop motor and reset status to prevent getting stuck
+          stopMotor();
+          return; // Exit early if calibration failed
+        }
         stepper.setSpeed(stepperSpeed);
         for (int i = 0; i < posLetter; i++) {
           float preciseStep = (float)STEPS / (float)AMOUNTFLAPS;
@@ -287,9 +295,11 @@ void rotateToLetter(int toLetter) {
       }
       //store new position
       displayedLetter = toLetter;
-      //rotation is done, stop the motor
-      delay(100); //important to stop rotation before shutting of the motor to avoid rotation after switching off current
-      stopMotor();
+      //rotation is done, stop the motor (always ensure motor is stopped)
+      if (motorStarted) {
+        delay(100); //important to stop rotation before shutting of the motor to avoid rotation after switching off current
+        stopMotor();
+      }
     }
     else {
 #ifdef SERIAL_ENABLE
@@ -350,7 +360,22 @@ void getOffset() {
   SerialPrintTimestamp();
   Serial.print(F("CalOffset from EEPROM: "));
   Serial.print(calOffset);
+  Serial.print(F(" (raw value from EEPROM)"));
   Serial.println();
+  SerialPrintTimestamp();
+  Serial.print(F("EEPROM address: "));
+  Serial.print(eeAddress);
+  Serial.println();
+  SerialPrintTimestamp();
+  Serial.print(F("Offset will be applied as: "));
+  Serial.print(ROTATIONDIRECTION);
+  Serial.print(F(" * "));
+  Serial.print(calOffset);
+  Serial.print(F(" = "));
+  Serial.print(ROTATIONDIRECTION * calOffset);
+  Serial.print(F(" steps ("));
+  Serial.print(ROTATIONDIRECTION * calOffset > 0 ? F("forward") : F("backward"));
+  Serial.println(F(")"));
 #endif
 }
 
@@ -450,26 +475,77 @@ int calibrate(bool initialCalibration) {
       Serial.print(F("Marker edge found at step: "));
       Serial.println(i);
       SerialPrintTimestamp();
-      Serial.print(F("Applying calibration offset: "));
+      Serial.print(F("CalOffset value from EEPROM: "));
       Serial.print(calOffset);
-      Serial.print(F(" steps in ROTATIONDIRECTION ("));
-      Serial.print(ROTATIONDIRECTION);
-      Serial.println(F(")"));
+      Serial.println(F(" steps"));
+      
+      if (calOffset == 0) {
+        SerialPrintTimestamp();
+        Serial.println(F("WARNING: CalOffset is ZERO! Offset will not be applied."));
+        SerialPrintTimestamp();
+        Serial.println(F("This means either:"));
+        SerialPrintTimestamp();
+        Serial.println(F("  1. EEPROM was never written (calibration not done)"));
+        SerialPrintTimestamp();
+        Serial.println(F("  2. EEPROM was cleared"));
+        SerialPrintTimestamp();
+        Serial.println(F("  3. EEPROM read failed"));
+        SerialPrintTimestamp();
+        Serial.println(F("Unit will stay at marker edge position (not at blank flap center)"));
+      } else {
+        SerialPrintTimestamp();
+        Serial.print(F("ROTATIONDIRECTION: "));
+        Serial.println(ROTATIONDIRECTION);
+        SerialPrintTimestamp();
+        Serial.print(F("Calculated step value: "));
+        Serial.print(ROTATIONDIRECTION);
+        Serial.print(F(" * "));
+        Serial.print(calOffset);
+        Serial.print(F(" = "));
+        long stepValue = (long)ROTATIONDIRECTION * (long)calOffset;
+        Serial.print(stepValue);
+        Serial.println(F(" steps"));
+        SerialPrintTimestamp();
+        Serial.print(F("Applying offset: moving "));
+        Serial.print(abs(stepValue));
+        Serial.print(F(" steps "));
+        Serial.print(stepValue > 0 ? F("forward") : F("backward"));
+        Serial.println();
+      }
 #endif
       
       // Apply offset: calOffset is steps in ROTATIONDIRECTION, just like scientress version
       // Apply directly - no conversion needed, no wrap-around
       // ROTATIONDIRECTION = -1, so ROTATIONDIRECTION * calOffset moves in ROTATIONDIRECTION
-      stepper.step(ROTATIONDIRECTION * calOffset); // Normal rotation direction only
-      
-      // Update step counter after applying offset
-      i = i + (ROTATIONDIRECTION * calOffset);
+      long markerStep = i; // Save marker position before offset
+      long stepValue = 0;
+      if (calOffset > 0) {
+        stepValue = (long)ROTATIONDIRECTION * (long)calOffset;
+        stepper.step(stepValue); // Normal rotation direction only
+        i = i + stepValue;
+      } else {
+        // Offset is zero - don't move, stay at marker
+        stepValue = 0;
+        // i stays at marker position
+      }
       // Wrap around if negative (shouldn't happen, but handle it)
       if (i < 0) {
+#ifdef SERIAL_ENABLE
+        SerialPrintTimestamp();
+        Serial.print(F("WARNING: Step counter went negative ("));
+        Serial.print(i);
+        Serial.println(F("), wrapping around"));
+#endif
         i = i + STEPS;
       }
       // Wrap around if beyond one rotation
       if (i >= STEPS) {
+#ifdef SERIAL_ENABLE
+        SerialPrintTimestamp();
+        Serial.print(F("WARNING: Step counter exceeded STEPS ("));
+        Serial.print(i);
+        Serial.println(F("), wrapping around"));
+#endif
         i = i - STEPS;
       }
       
@@ -479,25 +555,44 @@ int calibrate(bool initialCalibration) {
 #ifdef SERIAL_ENABLE
       unsigned long totalTime = millis() - calStartTime;
       SerialPrintTimestamp();
-      Serial.print(F("Offset applied | Final step position: "));
+      Serial.println(F("=== OFFSET APPLICATION SUMMARY ==="));
+      SerialPrintTimestamp();
+      Serial.print(F("Marker edge found at step: "));
+      Serial.println(markerStep);
+      SerialPrintTimestamp();
+      Serial.print(F("Offset value: "));
+      Serial.print(calOffset);
+      Serial.println(F(" steps"));
+      SerialPrintTimestamp();
+      Serial.print(F("Step value applied: "));
+      Serial.print(stepValue);
+      Serial.print(F(" steps ("));
+      Serial.print(stepValue > 0 ? F("forward") : F("backward"));
+      Serial.println(F(")"));
+      SerialPrintTimestamp();
+      Serial.print(F("Final step position after offset: "));
       Serial.print(i);
-      Serial.print(F(" | Total time: "));
+      Serial.print(F(" / "));
+      Serial.print(STEPS);
+      Serial.println();
+      SerialPrintTimestamp();
+      Serial.print(F("Total calibration time: "));
       Serial.print(totalTime);
       Serial.println(F("ms"));
       SerialPrintTimestamp();
-      Serial.print(F("Expected position after offset: CENTER of blank flap (index 0, '"));
+      Serial.print(F("Expected position: CENTER of blank flap (index 0, '"));
       Serial.print(letters[0]);
       Serial.println(F("')"));
       SerialPrintTimestamp();
-      Serial.print(F("(Marker edge at step "));
-      Serial.print(i - (ROTATIONDIRECTION * calOffset));
-      Serial.print(F(" + offset "));
-      Serial.print(calOffset);
-      Serial.print(F(" steps = step "));
+      Serial.print(F("Calculation: marker at step "));
+      Serial.print(markerStep);
+      Serial.print(F(" + offset step value "));
+      Serial.print(stepValue);
+      Serial.print(F(" = final step "));
       Serial.print(i);
-      Serial.println(F(")"));
+      Serial.println();
       SerialPrintTimestamp();
-      Serial.println(F("revolver calibrated"));
+      Serial.println(F("=== CALIBRATION COMPLETE ==="));
 #endif
       //Only stop motor for initial calibration
       if (initialCalibration) {
