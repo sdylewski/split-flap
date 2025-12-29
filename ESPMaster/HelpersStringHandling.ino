@@ -1,5 +1,11 @@
 //Aligns string on center of array and fills empty chars with spaces
 String centerString(String message) {
+  // Ensure message is exactly UNITS_AMOUNT characters
+  // Truncate if too long
+  if (message.length() > UNITS_AMOUNT) {
+    message = message.substring(0, UNITS_AMOUNT);
+  }
+  
   //Takes care of the left side
   int leftSpaceAmount = (UNITS_AMOUNT -  message.length()) / 2;
   for (int spaceIndex = 0; spaceIndex < leftSpaceAmount; spaceIndex++) {
@@ -12,6 +18,16 @@ String centerString(String message) {
   }
 
   message = cleanString(message);
+  
+  // Final safety check: ensure exactly UNITS_AMOUNT characters
+  if (message.length() != UNITS_AMOUNT) {
+    while (message.length() < UNITS_AMOUNT) {
+      message = message + " ";
+    }
+    if (message.length() > UNITS_AMOUNT) {
+      message = message.substring(0, UNITS_AMOUNT);
+    }
+  }
   
   return message;
 }
@@ -27,6 +43,12 @@ String createRepeatingString(char character) {
 
 //Aligns string on right side of array and fills empty chars with spaces
 String rightString(String message) {
+  // Ensure message is exactly UNITS_AMOUNT characters
+  // Truncate if too long
+  if (message.length() > UNITS_AMOUNT) {
+    message = message.substring(0, UNITS_AMOUNT);
+  }
+  
   int rightSpaceAmount = (UNITS_AMOUNT - message.length());
   for (int spaceIndex = 0; spaceIndex < rightSpaceAmount; spaceIndex++) {
     message = " " + message;
@@ -34,17 +56,43 @@ String rightString(String message) {
 
   message = cleanString(message);
 
+  // Final safety check: ensure exactly UNITS_AMOUNT characters
+  if (message.length() != UNITS_AMOUNT) {
+    while (message.length() < UNITS_AMOUNT) {
+      message = " " + message;
+    }
+    if (message.length() > UNITS_AMOUNT) {
+      message = message.substring(0, UNITS_AMOUNT);
+    }
+  }
+
   return message;
 }
 
 //Aligns string on left side of array and fills empty chars with spaces
 String leftString(String message) {
+  // Ensure message is exactly UNITS_AMOUNT characters
+  // Truncate if too long
+  if (message.length() > UNITS_AMOUNT) {
+    message = message.substring(0, UNITS_AMOUNT);
+  }
+  
   int leftSpaceAmount = (UNITS_AMOUNT - message.length());
   for (int spaceIndex = 0; spaceIndex < leftSpaceAmount; spaceIndex++) {
     message = message + " ";
   }
 
   message = cleanString(message);
+
+  // Final safety check: ensure exactly UNITS_AMOUNT characters
+  if (message.length() != UNITS_AMOUNT) {
+    while (message.length() < UNITS_AMOUNT) {
+      message = message + " ";
+    }
+    if (message.length() > UNITS_AMOUNT) {
+      message = message.substring(0, UNITS_AMOUNT);
+    }
+  }
 
   return message;
 }
