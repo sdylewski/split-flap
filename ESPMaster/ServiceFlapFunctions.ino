@@ -93,9 +93,20 @@ void showMessage(String message, int flapSpeed) {
     message = centerString(message);
   }
 
+  // Safety check: Ensure message is exactly UNITS_AMOUNT characters
+  // This prevents accessing beyond string bounds and ensures all units get a character
+  while (message.length() < UNITS_AMOUNT) {
+    message = message + " "; // Pad with spaces if too short
+  }
+  if (message.length() > UNITS_AMOUNT) {
+    message = message.substring(0, UNITS_AMOUNT); // Truncate if too long
+  }
+
   SerialPrint("Showing Aligned Message: \"");
   SerialPrint(message);
-  SerialPrintln("\"");
+  SerialPrint("\" (length: ");
+  SerialPrint(message.length());
+  SerialPrintln(")");
 
 #if UNIT_CALLS_DISABLE == true
   SerialPrintln("Unit Calls are disabled for debugging. Will delay to simulate calls...");
@@ -124,19 +135,23 @@ void showMessage(String message, int flapSpeed) {
   }
 
   for (int unitIndex = 0; unitIndex < UNITS_AMOUNT; unitIndex++) {
-    char currentLetter = message[unitIndex];
+    // Safety check: ensure we don't access beyond string bounds
+    char currentLetter = (unitIndex < message.length()) ? message[unitIndex] : ' ';
     int currentLetterPosition = translateLettertoInt(currentLetter);
     
     SerialPrint("Unit Nr.: ");
     SerialPrint(unitIndex);
     SerialPrint(" Letter: ");
-    SerialPrint(message[unitIndex]);
+    SerialPrint(currentLetter);
     SerialPrint(" Letter position: ");
     SerialPrintln(currentLetterPosition);
 
     //only write to unit if char exists in letter array
     if (currentLetterPosition != -1) {
       writeToUnit(unitIndex, currentLetterPosition, flapSpeed);
+    } else {
+      // If character not found, write space (index 0) as fallback
+      writeToUnit(unitIndex, 0, flapSpeed);
     }
     
     // Small yield between units to keep web server responsive

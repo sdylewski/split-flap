@@ -167,17 +167,35 @@
 							</p>
 						</div>
 
-						<div id="tab-trainstation" class="tab hidden">
-							<p>
-								<label for="inputTrainStationDelay">Time Between Changes (seconds)</label>
-								<br>
-								<input type="number" id="inputTrainStationDelay" name="trainStationDelay" min="5" max="3600" value="30" />
-								<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 30)</span>
-							</p>
-							<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
-								Displays random famous train stations from Europe and the US. The display will automatically cycle through stations at the specified interval.
-							</p>
-						</div>
+					<div id="tab-trainstation" class="tab hidden">
+						<p>
+							<label for="inputTrainStationType">Display Type</label>
+							<br>
+							<select id="inputTrainStationType" name="trainStationType" onchange="updateTrainStationLineOptions()" style="width: 100%; padding: 5px; font-size: 1em;">
+								<option value="random">Random Stations</option>
+								<option value="line">Train Lines (in order)</option>
+								<option value="bart">BART Lines (in order)</option>
+							</select>
+							<span style="font-size: 0.9em; color: #888;">Choose how to display train stations</span>
+						</p>
+						<p id="trainStationLineContainer" style="display: none;">
+							<label for="inputTrainStationLine">Select Line</label>
+							<br>
+							<select id="inputTrainStationLine" name="trainStationLine" style="width: 100%; padding: 5px; font-size: 1em;">
+								<option value="">-- Select a line --</option>
+							</select>
+							<span style="font-size: 0.9em; color: #888;">Choose which line to display</span>
+						</p>
+						<p>
+							<label for="inputTrainStationDelay">Time Between Changes (seconds)</label>
+							<br>
+							<input type="number" id="inputTrainStationDelay" name="trainStationDelay" min="5" max="3600" value="30" />
+							<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 30)</span>
+						</p>
+						<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+							<span id="trainStationDescription">Displays random famous train stations from Europe and the US. The display will automatically cycle through stations at the specified interval.</span>
+						</p>
+					</div>
 
 						<div id="tab-randomphrase" class="tab hidden">
 							<p>
@@ -237,9 +255,9 @@
 			</div>
 
 			<div class="card-grid">
-				<div class="card card-full">
-					<p class="card-title">Unit Testing</p>
-					<div style="font-size: 0.75em; color: #888; margin-bottom: 10px;">Test individual units for I2C communication, read/write operations, and error rates</div>
+			<div id="unitTestingCard" class="card card-full" style="display: none;">
+				<p class="card-title">Unit Testing</p>
+				<div style="font-size: 0.75em; color: #888; margin-bottom: 10px;">Test individual units for I2C communication, read/write operations, and error rates</div>
 					<div id="containerUnitTesting" style="background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; border-radius: 4px; overflow-x: auto;">
 						<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
 							<thead>

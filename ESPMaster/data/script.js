@@ -248,8 +248,17 @@ function loadPage() {
 							debugLogInterval = null;
 						}
 					}
+					
+					// Show/hide unit testing card based on debug flags
+					var unitTestingCard = document.getElementById("unitTestingCard");
+					if (unitTestingCard) {
+						var showUnitTesting = (responseObject.debugEnabled === true) || (responseObject.i2cDiagnosticEnabled === true);
+						unitTestingCard.style.display = showUnitTesting ? "block" : "none";
+					}
 						setCountdownDate(responseObject.countdownToDateUnix);
 						setTrainStationDelay(responseObject.trainStationDelay || 30);
+						setTrainStationType(responseObject.trainStationType || "random");
+						setTrainStationLine(responseObject.trainStationLine || "");
 						setRandomPhraseSettings(responseObject.randomPhraseList || "", responseObject.randomPhraseMinDelay || 10, responseObject.randomPhraseMaxDelay || 60);
 						setClockFormat24H(responseObject.clockFormat24H !== undefined ? responseObject.clockFormat24H : true);
 						setLastReceivedMessage(responseObject.lastTimeReceivedMessageDateTime);
@@ -465,6 +474,80 @@ function setTrainStationDelay(delaySeconds) {
 	var inputTrainStationDelay = document.getElementById("inputTrainStationDelay");
 	if (inputTrainStationDelay !== null) {
 		inputTrainStationDelay.value = delaySeconds;
+	}
+}
+
+function setTrainStationType(type) {
+	var inputTrainStationType = document.getElementById("inputTrainStationType");
+	if (inputTrainStationType !== null) {
+		inputTrainStationType.value = type || "random";
+		updateTrainStationLineOptions();
+	}
+}
+
+function setTrainStationLine(line) {
+	var inputTrainStationLine = document.getElementById("inputTrainStationLine");
+	if (inputTrainStationLine !== null) {
+		inputTrainStationLine.value = line || "";
+	}
+}
+
+function updateTrainStationLineOptions() {
+	var typeSelect = document.getElementById("inputTrainStationType");
+	var lineSelect = document.getElementById("inputTrainStationLine");
+	var description = document.getElementById("trainStationDescription");
+	
+	if (!typeSelect || !lineSelect) return;
+	
+	var selectedType = typeSelect.value;
+	var lineContainerDiv = document.getElementById("trainStationLineContainer");
+	
+	// Clear existing options
+	lineSelect.innerHTML = '<option value="">-- Select a line --</option>';
+	
+	if (selectedType === "random") {
+		// Hide line selector for random mode
+		if (lineContainerDiv) lineContainerDiv.style.display = "none";
+		if (description) {
+			description.textContent = "Displays random famous train stations from Europe and the US. The display will automatically cycle through stations at the specified interval.";
+		}
+	} else if (selectedType === "line") {
+		// Show train line options
+		if (lineContainerDiv) lineContainerDiv.style.display = "block";
+		var trainLines = [
+			{value: "eurostar", label: "Eurostar (London-Paris-Brussels)"},
+			{value: "thameslink", label: "Thameslink (Bedford-Brighton)"},
+			{value: "acela", label: "Acela (Boston-DC)"},
+			{value: "california", label: "California Zephyr (Sacramento-San Diego)"}
+		];
+		trainLines.forEach(function(line) {
+			var option = document.createElement("option");
+			option.value = line.value;
+			option.textContent = line.label;
+			lineSelect.appendChild(option);
+		});
+		if (description) {
+			description.textContent = "Displays stops along the selected train line in order. The display will cycle through all stops on the line at the specified interval.";
+		}
+	} else if (selectedType === "bart") {
+		// Show BART line options
+		if (lineContainerDiv) lineContainerDiv.style.display = "block";
+		var bartLines = [
+			{value: "bart-red", label: "BART Red Line (Richmond-Millbrae)"},
+			{value: "bart-yellow", label: "BART Yellow Line (Antioch-Millbrae)"},
+			{value: "bart-blue", label: "BART Blue Line (Dublin-Pleasanton-Daly City)"},
+			{value: "bart-green", label: "BART Green Line (Fremont-Richmond)"},
+			{value: "bart-orange", label: "BART Orange Line (Richmond-Dublin)"}
+		];
+		bartLines.forEach(function(line) {
+			var option = document.createElement("option");
+			option.value = line.value;
+			option.textContent = line.label;
+			lineSelect.appendChild(option);
+		});
+		if (description) {
+			description.textContent = "Displays stops along the selected BART line in order. The display will cycle through all stops on the line at the specified interval.";
+		}
 	}
 }
 

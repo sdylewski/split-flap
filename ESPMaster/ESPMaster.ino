@@ -215,6 +215,8 @@ const char* PARAM_FLAP_SPEED = "flapSpeed";
 const char* PARAM_DEVICEMODE = "deviceMode";
 const char* PARAM_INPUT_TEXT = "inputText";
 const char* PARAM_TRAIN_STATION_DELAY = "trainStationDelay";
+const char* PARAM_TRAIN_STATION_TYPE = "trainStationType";
+const char* PARAM_TRAIN_STATION_LINE = "trainStationLine";
 const char* PARAM_RANDOM_PHRASE_LIST = "randomPhraseList";
 const char* PARAM_RANDOM_PHRASE_MIN_DELAY = "randomPhraseMinDelay";
 const char* PARAM_RANDOM_PHRASE_MAX_DELAY = "randomPhraseMaxDelay";
@@ -246,6 +248,8 @@ const char* countdownPath = "/countdown.txt";
 const char* scheduledMessagesPath = "/scheduled-messages.txt";
 const char* debugModePath = "/debugmode.txt";
 const char* trainStationDelayPath = "/trainstationdelay.txt";
+const char* trainStationTypePath = "/trainstationtype.txt";
+const char* trainStationLinePath = "/trainstationline.txt";
 const char* randomPhraseListPath = "/randomphraselist.txt";
 const char* randomPhraseMinDelayPath = "/randomphasemindelay.txt";
 const char* randomPhraseMaxDelayPath = "/randomphasemaxdelay.txt";
@@ -258,6 +262,8 @@ String inputText = "";
 String deviceMode = "";
 String countdownToDateUnix = "";
 String trainStationDelaySeconds = "30"; // Default 30 seconds
+String trainStationType = "random"; // "random", "line", or "bart"
+String trainStationLine = ""; // Which line to display (e.g., "eurostar", "bart-red")
 String randomPhraseList = ""; // Comma-separated list of phrases
 String randomPhraseMinDelaySeconds = "10"; // Default 10 seconds
 String randomPhraseMaxDelaySeconds = "60"; // Default 60 seconds
@@ -577,6 +583,8 @@ void setup() {
       minimalDoc["lastWrittenText"] = lastWrittenText;
       minimalDoc["countdownToDateUnix"] = atol(countdownToDateUnix.c_str());
       minimalDoc["trainStationDelay"] = atol(trainStationDelaySeconds.c_str());
+      minimalDoc["trainStationType"] = trainStationType;
+      minimalDoc["trainStationLine"] = trainStationLine;
       minimalDoc["randomPhraseList"] = randomPhraseList;
       minimalDoc["randomPhraseMinDelay"] = atol(randomPhraseMinDelaySeconds.c_str());
       minimalDoc["randomPhraseMaxDelay"] = atol(randomPhraseMaxDelaySeconds.c_str());
@@ -590,6 +598,21 @@ void setup() {
       minimalDoc["otaEnabled"] = true;
 #else
       minimalDoc["otaEnabled"] = false;
+#endif
+#if DEBUG_ENABLE == true
+      minimalDoc["debugEnabled"] = true;
+#else
+      minimalDoc["debugEnabled"] = false;
+#endif
+#if I2C_DIAGNOSTIC_ENABLE == true
+      minimalDoc["i2cDiagnosticEnabled"] = true;
+#else
+      minimalDoc["i2cDiagnosticEnabled"] = false;
+#endif
+#if PAGE_LOAD_DEBUG_ENABLE == true
+      minimalDoc["pageLoadDebugEnabled"] = true;
+#else
+      minimalDoc["pageLoadDebugEnabled"] = false;
 #endif
       
       // Try to get scheduled messages quickly (with timeout)
@@ -1090,6 +1113,21 @@ void setup() {
               SerialPrintln("Train Station Delay out of range (5-3600 seconds). Using default 30.");
             }
           }
+
+          //HTTP POST train station type (random, line, or bart)
+          if (p->name() == PARAM_TRAIN_STATION_TYPE) {
+            String receivedType = p->value();
+            if (receivedType == "random" || receivedType == "line" || receivedType == "bart") {
+              trainStationType = receivedType;
+            } else {
+              SerialPrintln("Train Station Type invalid. Using default 'random'.");
+            }
+          }
+
+          //HTTP POST train station line (which specific line)
+          if (p->name() == PARAM_TRAIN_STATION_LINE) {
+            trainStationLine = p->value();
+          }
           
           //HTTP POST random phrase list
           if (p->name() == PARAM_RANDOM_PHRASE_LIST) {
@@ -1221,10 +1259,18 @@ void setup() {
           SerialPrintln("Countdown Date Time Unix Updated: " + countdownToDateUnix);
         }
         
-        //Save train station delay if provided
+        //Save train station settings if provided
         if (trainStationDelaySeconds != "") {
           writeFile(LittleFS, trainStationDelayPath, trainStationDelaySeconds.c_str());
           SerialPrintln("Train Station Delay Updated: " + trainStationDelaySeconds + " seconds");
+        }
+        if (trainStationType != "") {
+          writeFile(LittleFS, trainStationTypePath, trainStationType.c_str());
+          SerialPrintln("Train Station Type Updated: " + trainStationType);
+        }
+        if (trainStationLine != "") {
+          writeFile(LittleFS, trainStationLinePath, trainStationLine.c_str());
+          SerialPrintln("Train Station Line Updated: " + trainStationLine);
         }
         
         //Save random phrase settings
