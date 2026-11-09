@@ -124,7 +124,7 @@ static void runTrainStation(const Settings& s) {
     return;
   }
   const content::TrainLine* line = findLine(s.trainLine);
-  if (!line) line = s.trainType == "bart" ? findLine("bart-red") : findLine("eurostar");
+  if (!line) line = content::TRAIN_LINES[0];  // unknown / no line chosen yet
   lineStop = (lineStop + 1) % line->count;
   display::show(line->stops[lineStop]);
 }

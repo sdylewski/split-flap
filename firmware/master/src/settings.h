@@ -74,7 +74,7 @@ struct Settings {
   int64_t countdownTo = 0;  // unix time
 
   // Train station mode
-  String trainType = "random";  // random | line | bart
+  String trainType = "random";  // random | line (trainLine: an id from content.h, e.g. "bart-red", "nyc-7")
   String trainLine = "";
   int trainSeconds = 30;
   String trainStations = "";    // comma separated; empty = built-in list

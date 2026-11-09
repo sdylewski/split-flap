@@ -250,7 +250,8 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
 
   if (!isValidMode(s.mode)) return error = "unknown mode '" + s.mode + "'", false;
   if (!oneOf(s.alignment, {"left", "center", "right"})) return error = "alignment must be left, center or right", false;
-  if (!oneOf(s.trainType, {"random", "line", "bart"})) return error = "trainType must be random, line or bart", false;
+  if (s.trainType == "bart") s.trainType = "line";  // BART lines are ordinary lines now (older settings)
+  if (!oneOf(s.trainType, {"random", "line"})) return error = "trainType must be random or line", false;
   if (layout::parseHHMM(s.quietFrom.c_str()) < 0) return error = "quietFrom must be HH:MM", false;
   if (layout::parseHHMM(s.quietTo.c_str()) < 0) return error = "quietTo must be HH:MM", false;
   if (s.timezone.length() < 3) return error = "timezone must be a POSIX TZ string like PST8PDT,M3.2.0,M11.1.0", false;

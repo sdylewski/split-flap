@@ -87,14 +87,18 @@
             <div><label for="trainType">Show</label>
               <select id="trainType">
                 <option value="random">Random stations</option>
-                <option value="line">A metro / train line, in order</option>
-                <option value="bart">A BART line, in order</option>
+                <option value="line">A line, station by station</option>
               </select></div>
-            <div><label for="trainLine">Line</label><select id="trainLine"></select></div>
+            <div class="line-only"><label for="trainCity">City</label><select id="trainCity"></select></div>
+            <div class="line-only"><label for="trainLine">Line</label><select id="trainLine"></select></div>
+          </div>
+          <div class="row">
             <div><label for="trainSeconds">Seconds per station</label><input type="number" id="trainSeconds" min="5" max="3600"></div>
           </div>
-          <label for="trainStations">Your own station list (comma separated, empty = built-in)</label>
-          <textarea id="trainStations" rows="3" placeholder="GRAND CENT, PENN STN., UNION STN."></textarea>
+          <div class="random-only">
+            <label for="trainStations">Your own station list (comma separated, empty = built-in)</label>
+            <textarea id="trainStations" rows="3" placeholder="GRAND CENT, PENN STN., UNION STN."></textarea>
+          </div>
         </div>
         <div class="mode-panel" data-panel="randomphrase">
           <label for="phrases">Phrases (comma separated)</label>

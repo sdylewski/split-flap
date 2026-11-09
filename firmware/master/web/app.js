@@ -4,15 +4,17 @@
 const $ = (id) => document.getElementById(id);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-const TRAIN_LINES = {
-  line: [
-    ["nyc-7", "New York: 7 (Flushing - Hudson Yards)"], ["nyc-1", "New York: 1 (Van Cortlandt - South Ferry)"],
-    ["nyc-a", "New York: A (Inwood - Far Rockaway)"], ["cta-red", "Chicago: CTA Red Line"],
-    ["cta-blue", "Chicago: CTA Blue Line"], ["paris-1", "Paris: Metro 1"], ["paris-14", "Paris: Metro 14"],
-    ["cph-m1", "Copenhagen: M1"], ["cph-m2", "Copenhagen: M2 (airport)"], ["eurostar", "Eurostar"],
-    ["thameslink", "London: Thameslink"], ["acela", "Acela (Boston - DC)"], ["california", "California coast"],
-  ],
-  bart: [["bart-red", "BART Red"], ["bart-yellow", "BART Yellow"], ["bart-blue", "BART Blue"], ["bart-green", "BART Green"], ["bart-orange", "BART Orange"]],
+// Train station mode: city -> lines (ids match firmware/master/src/content.h)
+const TRAIN_CITIES = {
+  "San Francisco Bay Area (BART)": [["bart-red", "Red (Richmond - Millbrae)"], ["bart-yellow", "Yellow (Antioch - Millbrae)"],
+    ["bart-blue", "Blue (Dublin - Daly City)"], ["bart-green", "Green (Fremont - Richmond)"], ["bart-orange", "Orange (Richmond - Dublin)"]],
+  "New York": [["nyc-7", "7 (Flushing - Hudson Yards)"], ["nyc-1", "1 (Van Cortlandt - South Ferry)"], ["nyc-a", "A (Inwood - Far Rockaway)"]],
+  "Chicago": [["cta-red", "CTA Red (Howard - 95th)"], ["cta-blue", "CTA Blue (O'Hare - Forest Park)"]],
+  "Paris": [["paris-1", "Metro 1 (La Defense - Vincennes)"], ["paris-14", "Metro 14 (Saint-Denis - Orly)"]],
+  "Copenhagen": [["cph-m1", "M1 (Vanlose - Vestamager)"], ["cph-m2", "M2 (Vanlose - Airport)"]],
+  "London": [["thameslink", "Thameslink (Bedford - Brighton)"]],
+  "Long distance": [["eurostar", "Eurostar (London - Amsterdam)"], ["acela", "Acela (Boston - Washington)"],
+    ["california", "California coast (Sacramento - San Diego)"]],
 };
 
 // BART stations (from api.bart.gov stn.aspx?cmd=stns)
@@ -98,13 +100,23 @@ function setAlign(align) {
 }
 $$("#alignButtons button").forEach((b) => b.addEventListener("click", () => setAlign(b.dataset.align)));
 
-function fillTrainLines() {
-  const lines = TRAIN_LINES[$("trainType").value] || [];
-  $("trainLine").innerHTML = lines.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
-  $("trainLine").disabled = lines.length === 0;
-  if (settings && lines.some(([id]) => id === settings.trainLine)) $("trainLine").value = settings.trainLine;
+$("trainCity").innerHTML = Object.keys(TRAIN_CITIES).map((c) => `<option>${c}</option>`).join("");
+
+function cityOfLine(id) {
+  return Object.keys(TRAIN_CITIES).find((c) => TRAIN_CITIES[c].some(([lineId]) => lineId === id));
 }
-$("trainType").addEventListener("change", fillTrainLines);
+
+// Show / hide the parts that belong to "random" or "a line", and fill the line list for the city
+function updateTrainPanel(lineToSelect) {
+  const isLine = $("trainType").value === "line";
+  $$("#tab-display .line-only").forEach((e) => { e.hidden = !isLine; });
+  $$("#tab-display .random-only").forEach((e) => { e.hidden = isLine; });
+  const lines = TRAIN_CITIES[$("trainCity").value] || [];
+  $("trainLine").innerHTML = lines.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+  if (lineToSelect && lines.some(([id]) => id === lineToSelect)) $("trainLine").value = lineToSelect;
+}
+$("trainType").addEventListener("change", () => updateTrainPanel());
+$("trainCity").addEventListener("change", () => updateTrainPanel());
 
 function toDateInput(unix) {
   if (!unix) return "";
@@ -121,8 +133,9 @@ function fillForm(s) {
   $("clockDay").value = s.clockDay;
   $("dateFormat").value = s.dateFormat;
   $("countdownDate").value = toDateInput(s.countdownTo);
-  $("trainType").value = s.trainType;
-  fillTrainLines();
+  $("trainType").value = s.trainType === "bart" ? "line" : s.trainType;  // "bart" = older settings
+  $("trainCity").value = cityOfLine(s.trainLine) || Object.keys(TRAIN_CITIES)[0];
+  updateTrainPanel(s.trainLine);
   $("trainSeconds").value = s.trainSeconds;
   $("trainStations").value = s.trainStations;
   $("phrases").value = s.phrases;
