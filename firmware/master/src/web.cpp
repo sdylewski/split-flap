@@ -13,6 +13,7 @@
 #include "feeds.h"
 #include "log.h"
 #include "modes.h"
+#include "popup_rules.h"
 #include "net.h"
 #include "settings.h"
 #include "units.h"
@@ -86,12 +87,14 @@ static void postMessage(AsyncWebServerRequest* request, JsonVariant& json) {
   int64_t at = json["at"] | (long long)0;
   bool indefinitely = json["indefinitely"] | false;
   int seconds = json["seconds"] | 0;
+  String priorityName = json["priority"] | "";
   if (json["dictated"] | false) text = cleanDictation(text);
   if (text.length() > 200) return sendError(request, 400, "text is too long (max 200)");
   if (seconds < 0 || seconds > 86400) return sendError(request, 400, "seconds must be 0..86400");
   if (seconds > 0 && at == 0) {
     // Temporary: show it, then go back to whatever mode is running (notifications)
-    app::post([text, seconds]() { modes::notify(text, (uint32_t)seconds * 1000UL); });
+    int priority = priorityName.length() ? popup::parsePriority(priorityName.c_str()) : -1;
+    app::post([text, seconds, priority]() { modes::notify(text, (uint32_t)seconds * 1000UL, priority); });
     return sendOk(request);
   }
   if (at == 0) {
@@ -106,7 +109,17 @@ static void postMessage(AsyncWebServerRequest* request, JsonVariant& json) {
     });
     return sendOk(request);
   }
-  ScheduledMessage m{text, at, indefinitely};
+  ScheduledMessage m;
+  m.text = text;
+  m.at = at;
+  m.indefinitely = indefinitely;
+  m.showSeconds = json["showSeconds"] | 0;
+  m.repeatMinutes = json["repeatMinutes"] | 0;
+  m.repeatCount = json["repeatCount"] | 0;
+  if (m.showSeconds < 0 || m.showSeconds > 7200 || m.repeatMinutes < 0 || m.repeatMinutes > 10080 ||
+      m.repeatCount < 0 || m.repeatCount > 500) {
+    return sendError(request, 400, "showSeconds 0..7200, repeatMinutes 0..10080, repeatCount 0..500");
+  }
   Settings check = settings::snapshot();
   String error;
   if (!settings::addScheduled(check, m, error)) return sendError(request, 400, error);

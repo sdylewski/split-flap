@@ -142,3 +142,10 @@ td button { padding: 4px 10px; font-size: 13px; }
   .board { gap: 3px; }
   .terminal { height: 360px; }
 }
+
+#popupTable input[type=number] { width: 72px; padding: 5px 6px; }
+#popupTable input[type=time] { width: 104px; padding: 5px 6px; }
+#popupTable select { width: auto; padding: 5px 6px; }
+#popupTable td.days { white-space: nowrap; }
+label.day { display: inline-flex; flex-direction: column; align-items: center; font-size: 11px; margin: 0 1px; color: var(--muted); }
+label.inline { display: inline-flex; gap: 4px; align-items: center; margin: 0; color: var(--text); font-size: 13px; }

@@ -11,8 +11,40 @@
 
 struct ScheduledMessage {
   String text;
-  int64_t at = 0;             // unix time to show it
-  bool indefinitely = false;  // true = becomes the text-mode text; false = shown for SCHEDULED_SHOW_MS
+  int64_t at = 0;             // unix time to show it (the first time)
+  bool indefinitely = false;  // true = becomes the text-mode text; false = a pop-up
+  int showSeconds = 0;        // pop-up length, 0 = the "scheduled" source's default
+  int repeatMinutes = 0;      // show it again every N minutes ...
+  int repeatCount = 0;        // ... this many more times (e.g. every 60 min, 8 times)
+};
+
+// Pop-up sources: things that take over the display for a while on top of the base mode.
+enum Source : uint8_t {
+  SRC_PRINTERS,      // print done / failed (event) + progress (timer)
+  SRC_NOTIFY,        // messages from Home Assistant, Siri, the API ("seconds")
+  SRC_SCHEDULED,     // scheduled messages
+  SRC_WEATHER,
+  SRC_BART,          // timer, and/or "a train is N minutes away" (trainMinutes)
+  SRC_DATE,
+  SRC_COUNTDOWN,
+  SRC_PHRASES,       // random phrase
+  SRC_NUMBERS,       // famous numbers
+  SRC_TRAINS,        // train station board
+  SRC_COUNT
+};
+// Ids in settings / the API, and the mode each source shows (empty = event text only)
+static const char* const SOURCE_IDS[SRC_COUNT] = {"printers", "notify",   "scheduled",    "weather",       "bart",
+                                                  "date",     "countdown", "randomphrase", "famousnumbers", "trainstation"};
+
+struct SourceRule {
+  bool enabled = false;
+  int priority = 1;           // popup::LOW / NORMAL / HIGH
+  int showSeconds = 60;       // how long it holds the display
+  int everyMinutes = 0;       // timer: show every N minutes (0 = only on events)
+  String from = "";           // timer window "HH:MM" .. "HH:MM" (empty = all day)
+  String to = "";
+  int days = 0x7F;            // timer weekdays: bit 0 = Sunday .. bit 6 = Saturday
+  int trainMinutes = 0;       // BART only: pop up when a train is this many minutes away (0 = off)
 };
 
 struct PrinterConfig {
@@ -89,10 +121,12 @@ struct Settings {
   String bartKey = "MW9S-E7SL-26DU-VV8V";  // BART's public key; register your own at https://api.bart.gov/api/register.aspx
   int bartSeconds = 6;          // seconds per departure
 
-  // 3D printers (Klipper / Moonraker): progress mode + "done" notifications
+  // 3D printers (Klipper / Moonraker): progress mode + "done" pop-ups (SRC_PRINTERS)
   std::vector<PrinterConfig> printers;
-  bool printerNotify = true;
-  int printerNotifySeconds = 300;
+
+  // Pop-up rules per source (defaults set in settings.cpp)
+  SourceRule sources[SRC_COUNT];
+  Settings();
 
   // Diagnostics
   String logLevel = "info";     // serial log level: debug | info | warn | error | off

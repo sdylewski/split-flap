@@ -62,7 +62,8 @@ The display pauses during an update (LED solid on) and reboots when it's done.
 
 - **Display** – mode (text, clock, date, countdown, train station, phrases, numbers),
   alignment, speed. The board at the top mirrors the real flaps.
-- **Schedule** – messages at a set time (one-off for 7.5 s, or "keep showing"), quiet hours.
+- **Pop-ups** – what may interrupt the base mode, how long, how often (see integrations.md).
+- **Schedule** – messages at a set time, optionally repeating (a pop-up, or "keep showing"), quiet hours.
 - **Units** – status and diagnostics per unit, re-home and calibrate buttons.
 - **Console** – the same command console as telnet/serial, in the browser.
 - **System** – firmware, memory, WiFi, time zone, unit count, log level, live log, reboot.

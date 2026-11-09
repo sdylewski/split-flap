@@ -9,7 +9,15 @@
 
 #include "config.h"
 #include "log.h"
+#include "popup_rules.h"
 #include "text_layout.h"
+
+Settings::Settings() {
+  // Event pop-ups on by default (they only fire when something happens), timers off
+  sources[SRC_PRINTERS] = {true, 2, 300, 0, "", "", 0x7F, 0};
+  sources[SRC_NOTIFY] = {true, 2, 60, 0, "", "", 0x7F, 0};
+  sources[SRC_SCHEDULED] = {true, 1, 8, 0, "", "", 0x7F, 0};
+}
 
 namespace settings {
 
@@ -89,8 +97,19 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["bartDirection"] = s.bartDirection;
   o["bartKey"] = s.bartKey;
   o["bartSeconds"] = s.bartSeconds;
-  o["printerNotify"] = s.printerNotify;
-  o["printerNotifySeconds"] = s.printerNotifySeconds;
+  JsonObject sources = o["sources"].to<JsonObject>();
+  for (int i = 0; i < SRC_COUNT; i++) {
+    const SourceRule& r = s.sources[i];
+    JsonObject item = sources[SOURCE_IDS[i]].to<JsonObject>();
+    item["enabled"] = r.enabled;
+    item["priority"] = popup::priorityName(r.priority);
+    item["showSeconds"] = r.showSeconds;
+    item["everyMinutes"] = r.everyMinutes;
+    item["from"] = r.from;
+    item["to"] = r.to;
+    item["days"] = r.days;
+    if (i == SRC_BART) item["trainMinutes"] = r.trainMinutes;
+  }
   JsonArray printers = o["printers"].to<JsonArray>();
   for (const PrinterConfig& p : s.printers) {
     JsonObject item = printers.add<JsonObject>();
@@ -104,6 +123,9 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
       item["text"] = m.text;
       item["at"] = m.at;
       item["indefinitely"] = m.indefinitely;
+      item["showSeconds"] = m.showSeconds;
+      item["repeatMinutes"] = m.repeatMinutes;
+      item["repeatCount"] = m.repeatCount;
     }
   }
 }
@@ -219,8 +241,8 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeString(p, "bartStation", s.bartStation, 4, error) &&
             takeString(p, "bartDirection", s.bartDirection, 1, error) &&
             takeString(p, "bartKey", s.bartKey, 40, error) && takeInt(p, "bartSeconds", s.bartSeconds, 3, 120, error) &&
-            takeBool(p, "printerNotify", s.printerNotify, error) &&
-            takeInt(p, "printerNotifySeconds", s.printerNotifySeconds, 10, 7200, error);
+            takeBool(p, "printerNotify", s.sources[SRC_PRINTERS].enabled, error) &&  // pre-pop-up settings
+            takeInt(p, "printerNotifySeconds", s.sources[SRC_PRINTERS].showSeconds, 10, 7200, error);
   if (!ok) return false;
 
   if (!isValidMode(s.mode)) return error = "unknown mode '" + s.mode + "'", false;
@@ -237,6 +259,34 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   s.bartDirection.toLowerCase();
   if (s.bartStation.length() != 4) return error = "bartStation must be a 4-letter station code (e.g. MONT)", false;
   if (!oneOf(s.bartDirection, {"", "n", "s"})) return error = "bartDirection must be empty, n or s", false;
+
+  JsonVariantConst sourceList = p["sources"];
+  if (!sourceList.isNull()) {
+    if (!sourceList.is<JsonObjectConst>()) return error = "sources must be an object", false;
+    for (JsonPairConst kv : sourceList.as<JsonObjectConst>()) {
+      int id = -1;
+      for (int i = 0; i < SRC_COUNT; i++) {
+        if (kv.key() == SOURCE_IDS[i]) id = i;
+      }
+      if (id < 0) return error = String("unknown source '") + kv.key().c_str() + "'", false;
+      JsonObjectConst r = kv.value().as<JsonObjectConst>();
+      SourceRule& rule = s.sources[id];
+      String priority = rule.priority >= 2 ? "high" : (rule.priority <= 0 ? "low" : "normal");
+      String prefix = String("sources.") + SOURCE_IDS[id] + ".";
+      bool ok = takeBool(r, "enabled", rule.enabled, error) && takeString(r, "priority", priority, 6, error) &&
+                takeInt(r, "showSeconds", rule.showSeconds, 3, 7200, error) &&
+                takeInt(r, "everyMinutes", rule.everyMinutes, 0, 1440, error) &&
+                takeString(r, "from", rule.from, 5, error) && takeString(r, "to", rule.to, 5, error) &&
+                takeInt(r, "days", rule.days, 0, 0x7F, error) && takeInt(r, "trainMinutes", rule.trainMinutes, 0, 60, error);
+      if (!ok) return error = prefix + error, false;
+      if (!oneOf(priority, {"low", "normal", "high"})) return error = prefix + "priority must be low, normal or high", false;
+      rule.priority = popup::parsePriority(priority.c_str());
+      if ((rule.from.length() && layout::parseHHMM(rule.from.c_str()) < 0) ||
+          (rule.to.length() && layout::parseHHMM(rule.to.c_str()) < 0)) {
+        return error = prefix + "from/to must be HH:MM (or empty for all day)", false;
+      }
+    }
+  }
 
   JsonVariantConst printerList = p["printers"];
   if (!printerList.isNull()) {
@@ -267,6 +317,9 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
       m.text = item["text"] | "";
       m.at = item["at"] | (long long)0;
       m.indefinitely = item["indefinitely"] | false;
+      m.showSeconds = item["showSeconds"] | 0;
+      m.repeatMinutes = item["repeatMinutes"] | 0;
+      m.repeatCount = item["repeatCount"] | 0;
       if (m.at > 0 && m.text.length() <= 200) s.scheduled.push_back(m);
     }
   }

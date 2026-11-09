@@ -39,7 +39,6 @@
 #define DISPLAY_FIRST_POLL_MS 300       // give units time to start moving before the first poll
 #define DISPLAY_MOVE_TIMEOUT_MS 30000   // give up waiting for a stuck unit after this long
 #define DISPLAY_WRITE_SPACING_MS 2200   // units ignore moves < 2 s apart: never send faster than this
-#define SCHEDULED_SHOW_MS 7500          // how long a one-off scheduled message stays up
 
 // WiFi credentials: secrets.h (git-ignored). Copy secrets.h.example to create it.
 #if __has_include("secrets.h")

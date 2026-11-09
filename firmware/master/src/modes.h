@@ -10,8 +10,11 @@ void loop();        // main loop: decides what to show, display:: does the showi
 void restart();     // settings changed: start the current mode from scratch
 String status();    // human readable: "clock", "quiet hours until 08:00", ...
 
-// Show a message for a while, then go back to the current mode (printer done, Home Assistant,
-// Siri, ...). Ignored during quiet hours and while the console has the display paused.
-void notify(const String& text, uint32_t durationMs);
+// Pop-ups on top of the base mode (rules: popup_rules.h, settings: Settings::sources).
+// notify(): messages from Home Assistant / Siri / the API / the console. durationMs 0 and
+// priority -1 = the "notify" source's defaults. Returns false if it wasn't shown.
+bool notify(const String& text, uint32_t durationMs = 0, int priority = -1);
+// A print finished / failed ("PRINTY DONE")
+void printerEvent(const String& text);
 
 }  // namespace modes

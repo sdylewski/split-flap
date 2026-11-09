@@ -4,8 +4,55 @@ The display can show live data (weather, BART departures, 3D printers) and take 
 Home Assistant, Siri or anything else that can send an HTTP request. Live data is fetched by a
 background task on the ESP32, so a slow website never stalls the flaps.
 
-Everything here is set up in the web UI (`http://flappy.local`, Display tab) or with the API
-(`POST /api/settings`, see [software.md](./software.md#26-api)).
+Everything here is set up in the web UI (`http://flappy.local`, Display and Pop-ups tabs) or with
+the API (`POST /api/settings`, see [software.md](./software.md#26-api)).
+
+## Base mode and pop-ups
+
+The display always has a **base mode** - clock, text, weather, ... (`mode`) - and **pop-ups** that
+take over for a while and then hand the display back. The clock keeps the display most of the
+time; "PRINTY DONE" still gets through whenever it happens.
+
+Each pop-up source has a rule (Pop-ups tab, or `sources.<id>` in the settings):
+
+| Field | Meaning |
+|---|---|
+| `enabled` | On/off |
+| `priority` | `high` interrupts anything showing (except another high one). `normal` interrupts the base mode, but is ignored while another pop-up is up. `low` only shows when the base mode has been up for a minute |
+| `showSeconds` | How long it holds the display |
+| `everyMinutes` | Timer: show every N minutes, aligned to the clock (15 = :00 :15 :30 :45). 0 = only on events |
+| `from` / `to` | Timer window, e.g. `07:00`-`09:00` (empty = all day) |
+| `days` | Timer weekdays, bit mask: 1 = Sunday, 2 = Monday, ... 64 = Saturday (127 = every day, 62 = Mon-Fri) |
+| `trainMinutes` | BART only: pop up when a train is exactly this many minutes away (0 = off) |
+
+A pop-up that isn't allowed in (something equal or more important is up) is dropped, not
+queued. A timer pop-up that's blocked keeps trying for 5 minutes into its slot.
+
+| Source | Events | Timer shows |
+|---|---|---|
+| `printers` | `PRINTY DONE` / `ERROR` / `STOPPED` when a running print ends | Printer progress |
+| `notify` | Home Assistant, Siri, `curl` (`/api/message` with `seconds`) | - |
+| `scheduled` | Scheduled messages (each can repeat, see below) | - |
+| `bart` | A train `trainMinutes` away | Next departures |
+| `weather`, `date`, `countdown`, `randomphrase`, `famousnumbers`, `trainstation` | - | That mode for `showSeconds` |
+
+Defaults: printers, messages and scheduled messages on (they only fire when something happens),
+every timer off.
+
+Example: clock as the base mode; BART every 10 minutes on weekday mornings; PRINTY DONE always:
+
+```json
+{"mode": "clock",
+ "sources": {
+   "bart": {"enabled": true, "priority": "normal", "showSeconds": 60, "everyMinutes": 10,
+            "from": "07:00", "to": "09:00", "days": 62},
+   "printers": {"enabled": true, "priority": "high", "showSeconds": 120}}}
+```
+
+**Scheduled messages repeat:** "HAPPY BIRTHDAY MAX" at 9:00, 300 seconds, then every 60 minutes 8
+more times. The message stays in the list with its next time until the last repeat, so a reboot
+doesn't lose it. In the API: `{"text": "...", "at": <unix time>, "showSeconds": 300,
+"repeatMinutes": 60, "repeatCount": 8}`.
 
 ## Weather
 
@@ -48,9 +95,9 @@ Add printers in the Printers panel: a short **name** for the display (up to 10 c
 **host** (`printy.local`, `voron.local` or an IP; port 7125 is assumed). The master checks them
 every 15 seconds.
 
-- **In any mode:** when a running print finishes, the display shows `PRINTY DONE` for
-  `printerNotifySeconds` (default 5 minutes), then goes back to what it was showing. A failed
-  print shows `PRINTY ERROR`. Not during quiet hours.
+- **In any mode:** when a running print finishes, `PRINTY DONE` pops up (default: high priority,
+  5 minutes - the `printers` pop-up rule), then the base mode comes back. A failed print shows
+  `PRINTY ERROR`. Not during quiet hours.
 - **Mode `printers`:** progress of each printer: `PRINTY 66`, `LEFT 1:05`, `VORON DONE`,
   `VORON IDLE`, `VORON OFF` (not reachable).
 
@@ -81,8 +128,9 @@ curl -H 'Content-Type: application/json' -d '{"text":"WASHER DONE","seconds":60}
 | Field | Meaning |
 |---|---|
 | `text` | Up to 200 characters. Long text wraps onto several lines |
-| `seconds` | Optional: show temporarily, then go back to the current mode |
-| `at` | Optional: unix time to show it (scheduled message) |
+| `seconds` | Optional: a pop-up for this many seconds, then back to the base mode |
+| `priority` | Optional with `seconds`: `low` / `normal` / `high` (default: the `notify` source's priority) |
+| `at` | Optional: unix time to show it (scheduled message); with `showSeconds`, `repeatMinutes`, `repeatCount` |
 | `dictated` | Optional `true`: clean up dictated text - drops the closing `.`/`!`/`?` and apostrophes |
 
 Characters that aren't on the flaps show as blanks. Lower case is fine.

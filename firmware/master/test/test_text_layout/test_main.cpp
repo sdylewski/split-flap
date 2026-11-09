@@ -2,6 +2,7 @@
 #include <unity.h>
 
 #include "text_layout.cpp"  // pure C++, compiled directly into the test binary
+#include "popup_rules.h"
 
 using namespace layout;
 
@@ -92,6 +93,35 @@ void test_param_table() {
   TEST_ASSERT_EQUAL_INT(32, (int)sizeof(unitproto::Info));
 }
 
+void test_popup_priorities() {
+  using namespace popup;
+  // Over the base mode
+  TEST_ASSERT_TRUE(admits(PRIO_HIGH, false, 0, 0));
+  TEST_ASSERT_TRUE(admits(PRIO_NORMAL, false, 0, 0));
+  TEST_ASSERT_FALSE(admits(PRIO_LOW, false, 0, 1000));      // a pop-up just ended
+  TEST_ASSERT_TRUE(admits(PRIO_LOW, false, 0, LOW_GAP_MS));
+  // Over another pop-up
+  TEST_ASSERT_TRUE(admits(PRIO_HIGH, true, PRIO_NORMAL, 0));     // PRINTY DONE over BART
+  TEST_ASSERT_TRUE(admits(PRIO_HIGH, true, PRIO_LOW, 0));
+  TEST_ASSERT_FALSE(admits(PRIO_HIGH, true, PRIO_HIGH, 0));      // equal never interrupts
+  TEST_ASSERT_FALSE(admits(PRIO_NORMAL, true, PRIO_LOW, 0));     // normal only over the base mode
+  TEST_ASSERT_FALSE(admits(PRIO_NORMAL, true, PRIO_NORMAL, 0));
+  TEST_ASSERT_FALSE(admits(PRIO_LOW, true, PRIO_LOW, LOW_GAP_MS));
+  TEST_ASSERT_EQUAL_INT(PRIO_HIGH, parsePriority("high"));
+  TEST_ASSERT_EQUAL_INT(PRIO_NORMAL, parsePriority("whatever"));
+}
+
+void test_popup_windows() {
+  using namespace popup;
+  TEST_ASSERT_TRUE(dayMatches(0x7F, 3));
+  TEST_ASSERT_TRUE(dayMatches(0x3E, 1));               // Mon-Fri
+  TEST_ASSERT_FALSE(dayMatches(0x3E, 0));              // not Sunday
+  TEST_ASSERT_TRUE(windowMatches("", "", 3 * 60));
+  TEST_ASSERT_TRUE(windowMatches("07:00", "09:00", 7 * 60 + 30));
+  TEST_ASSERT_FALSE(windowMatches("07:00", "09:00", 9 * 60));
+  TEST_ASSERT_TRUE(windowMatches("22:00", "02:00", 1 * 60));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_short_text_is_one_line);
@@ -108,5 +138,7 @@ int main() {
   RUN_TEST(test_quiet_hours);
   RUN_TEST(test_days_until);
   RUN_TEST(test_param_table);
+  RUN_TEST(test_popup_priorities);
+  RUN_TEST(test_popup_windows);
   return UNITY_END();
 }

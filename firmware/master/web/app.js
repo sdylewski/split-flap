@@ -158,6 +158,7 @@ function fillForm(s) {
   const known = TIMEZONES.find(([name, tz]) => tz === s.timezone);
   $("timezoneName").value = known ? known[1] : "custom";
   renderSchedule(s.scheduled || []);
+  renderPopups(s.sources || {});
 }
 
 async function loadSettings() {
@@ -219,6 +220,52 @@ $("btnApply").addEventListener("click", () => {
       break;
   }
   save(patch, $("applyStatus"));
+});
+
+// ---- Pop-ups tab ---------------------------------------------------------------------------
+const SOURCE_NAMES = {
+  printers: "3D printers (print done / progress)", notify: "Messages (Home Assistant, Siri, API)",
+  scheduled: "Scheduled messages", weather: "Weather", bart: "BART departures", date: "Date",
+  countdown: "Countdown", randomphrase: "Random phrase", famousnumbers: "Famous numbers", trainstation: "Train station board",
+};
+const EVENT_ONLY = ["notify", "scheduled"];
+const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
+
+function renderPopups(sources) {
+  const rows = Object.entries(SOURCE_NAMES).map(([id, label]) => {
+    const r = sources[id] || {};
+    const timer = !EVENT_ONLY.includes(id);
+    const days = DAY_LETTERS.map((d, i) =>
+      `<label class="day"><input type="checkbox" data-day="${i}" ${(r.days >> i) & 1 ? "checked" : ""}>${d}</label>`).join("");
+    const extra = id === "bart"
+      ? `<label class="inline">train <input type="number" data-k="trainMinutes" min="0" max="60" value="${r.trainMinutes || 0}"> min away</label>`
+      : "";
+    const priorities = ["low", "normal", "high"].map((p) => `<option ${r.priority === p ? "selected" : ""}>${p}</option>`).join("");
+    return `<tr data-source="${id}"><td>${label}</td>` +
+      `<td><input type="checkbox" data-k="enabled" ${r.enabled ? "checked" : ""}></td>` +
+      `<td><select data-k="priority">${priorities}</select></td>` +
+      `<td><input type="number" data-k="showSeconds" min="3" max="7200" value="${r.showSeconds || 60}"></td>` +
+      `<td>${timer ? `<input type="number" data-k="everyMinutes" min="0" max="1440" value="${r.everyMinutes || 0}">` : "event"}</td>` +
+      `<td>${timer ? `<input type="time" data-k="from" value="${r.from || ""}">` : ""}</td>` +
+      `<td>${timer ? `<input type="time" data-k="to" value="${r.to || ""}">` : ""}</td>` +
+      `<td class="days">${timer ? days : ""}</td><td>${extra}</td></tr>`;
+  });
+  $("popupTable").querySelector("tbody").innerHTML = rows.join("");
+}
+
+$("btnPopups").addEventListener("click", () => {
+  const sources = {};
+  $$("#popupTable tbody tr").forEach((tr) => {
+    const get = (k) => tr.querySelector(`[data-k="${k}"]`);
+    const r = { enabled: get("enabled").checked, priority: get("priority").value, showSeconds: Number(get("showSeconds").value) };
+    if (get("everyMinutes")) r.everyMinutes = Number(get("everyMinutes").value);
+    if (get("from")) { r.from = get("from").value; r.to = get("to").value; }
+    const dayBoxes = tr.querySelectorAll("[data-day]");
+    if (dayBoxes.length) r.days = Array.from(dayBoxes).reduce((m, b) => m | (b.checked ? 1 << Number(b.dataset.day) : 0), 0);
+    if (get("trainMinutes")) r.trainMinutes = Number(get("trainMinutes").value);
+    sources[tr.dataset.source] = r;
+  });
+  save({ sources }, $("popupStatus"));
 });
 
 // ---- Weather / BART / printers panels --------------------------------------------------------
@@ -292,7 +339,9 @@ function renderSchedule(list) {
   list.slice().sort((a, b) => a.at - b.at).forEach((m) => {
     const li = document.createElement("li");
     const when = new Date(m.at * 1000).toLocaleString();
-    li.innerHTML = `<div><strong></strong><div class="when">${when}${m.indefinitely ? " · keeps showing" : ""}</div></div>`;
+    const repeat = m.repeatMinutes && m.repeatCount ? ` · then every ${m.repeatMinutes} min, ${m.repeatCount} more` : "";
+    const show = m.showSeconds ? ` · ${m.showSeconds} s` : "";
+    li.innerHTML = `<div><strong></strong><div class="when">${when}${m.indefinitely ? " · keeps showing" : show + repeat}</div></div>`;
     li.querySelector("strong").textContent = m.text;
     const remove = document.createElement("button");
     remove.textContent = "Remove";
@@ -311,7 +360,9 @@ $("btnSchedule").addEventListener("click", async () => {
   if (!text || !when) return flash($("schedStatus"), "Enter a message and a time", false);
   const at = Math.floor(new Date(when).getTime() / 1000);
   try {
-    await api("/api/message", { body: { text, at, indefinitely: $("schedForever").checked } });
+    await api("/api/message", { body: { text, at, indefinitely: $("schedForever").checked,
+      showSeconds: Number($("schedShow").value) || 0, repeatMinutes: Number($("schedRepeatMinutes").value) || 0,
+      repeatCount: Number($("schedRepeatCount").value) || 0 } });
     flash($("schedStatus"), "Scheduled");
     $("schedText").value = "";
     setTimeout(loadSettings, 400);

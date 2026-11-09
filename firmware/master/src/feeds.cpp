@@ -278,8 +278,8 @@ static void fetchBart(const Settings& s) {
 }
 
 // ---- Printers ------------------------------------------------------------------------------
-static void notify(const String& text, int seconds) {
-  app::post([text, seconds]() { modes::notify(text, (uint32_t)seconds * 1000UL); });
+static void printerEvent(const String& text) {
+  app::post([text]() { modes::printerEvent(text); });
 }
 
 static void fetchPrinters(const Settings& s) {
@@ -312,10 +312,10 @@ static void fetchPrinters(const Settings& s) {
     for (const Printer& old : previous) {
       if (old.name != p.name || !old.reachable || !p.reachable || old.state == p.state) continue;
       LOGI("feeds", "printer %s: %s -> %s", p.name.c_str(), old.state.c_str(), p.state.c_str());
-      if (s.printerNotify && old.state == "printing") {
-        if (p.state == "complete") notify(p.name + " DONE", s.printerNotifySeconds);
-        else if (p.state == "error") notify(p.name + " ERROR", s.printerNotifySeconds);
-        else if (p.state == "cancelled") notify(p.name + " STOPPED", 60);
+      if (old.state == "printing") {  // pop-up rules (enabled, priority, duration): sources.printers
+        if (p.state == "complete") printerEvent(p.name + " DONE");
+        else if (p.state == "error") printerEvent(p.name + " ERROR");
+        else if (p.state == "cancelled") printerEvent(p.name + " STOPPED");
       }
     }
     result.push_back(p);
@@ -352,13 +352,15 @@ static void task(void*) {
       }
       continue;
     }
-    if (s.mode == "weather" && (wk != weatherKey || lastWeather == 0 || now - lastWeather > weatherEvery)) {
+    bool wantWeather = s.mode == "weather" || s.sources[SRC_WEATHER].enabled;
+    bool wantBart = s.mode == "bart" || s.sources[SRC_BART].enabled;
+    if (wantWeather && (wk != weatherKey || lastWeather == 0 || now - lastWeather > weatherEvery)) {
       weatherKey = wk;
       lastWeather = now;
       fetchWeather(s);
     }
     String bk = s.bartStation + s.bartDirection;
-    if (s.mode == "bart" && (bk != bartKey || lastBart == 0 || now - lastBart > 30000)) {
+    if (wantBart && (bk != bartKey || lastBart == 0 || now - lastBart > 30000)) {
       bartKey = bk;
       lastBart = now;
       fetchBart(s);

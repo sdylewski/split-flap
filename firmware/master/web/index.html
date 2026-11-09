@@ -24,6 +24,7 @@
 
   <nav id="tabs">
     <button data-tab="display" class="active">Display</button>
+    <button data-tab="popups">Pop-ups</button>
     <button data-tab="schedule">Schedule</button>
     <button data-tab="units">Units</button>
     <button data-tab="console">Console</button>
@@ -34,7 +35,8 @@
     <!-- ================= Display ================= -->
     <section id="tab-display" class="tab active">
       <div class="card">
-        <h2>Mode</h2>
+        <h2>Base mode</h2>
+        <p class="hint" style="margin:-6px 0 10px">What the display shows whenever no pop-up is up (see the Pop-ups tab).</p>
         <div class="segmented" id="modeButtons">
           <button data-mode="text">Text</button>
           <button data-mode="clock">Clock</button>
@@ -185,6 +187,26 @@
       </div>
     </section>
 
+    <!-- ================= Pop-ups ================= -->
+    <section id="tab-popups" class="tab">
+      <div class="card">
+        <h2>Pop-ups</h2>
+        <p class="hint" style="margin-top:-6px">A pop-up takes over the display for its <b>show</b> time, then the base mode
+          comes back. <b>High</b> interrupts anything; <b>normal</b> only interrupts the base mode (ignored while another
+          pop-up is up); <b>low</b> only shows when the base mode has been up for a minute. <b>Every</b> = on a timer,
+          aligned to the clock (15 = :00 :15 :30 :45), within the time window and days. Events (print done, messages,
+          scheduled messages, a BART train N minutes away) pop up when they happen.</p>
+        <div class="table-wrap">
+          <table id="popupTable">
+            <thead><tr><th>Source</th><th>On</th><th>Priority</th><th>Show (s)</th><th>Every (min)</th>
+              <th>From</th><th>To</th><th>Days</th><th>Extra</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <div class="actions"><button class="primary" id="btnPopups">Save</button><span class="status" id="popupStatus"></span></div>
+      </div>
+    </section>
+
     <!-- ================= Schedule ================= -->
     <section id="tab-schedule" class="tab">
       <div class="card">
@@ -195,7 +217,13 @@
           <div><label for="schedAt">When</label><input type="datetime-local" id="schedAt"></div>
           <div><label class="check"><input type="checkbox" id="schedForever"> Keep showing it (becomes the text-mode message)</label></div>
         </div>
-        <p class="hint">Without "keep showing", it appears for 7.5 seconds and the display goes back to what it was doing.</p>
+        <div class="row">
+          <div><label for="schedShow">Show for (seconds, empty = default)</label><input type="number" id="schedShow" min="3" max="7200"></div>
+          <div><label for="schedRepeatMinutes">Repeat every (minutes)</label><input type="number" id="schedRepeatMinutes" min="0" max="10080" placeholder="0"></div>
+          <div><label for="schedRepeatCount">Repeat how many more times</label><input type="number" id="schedRepeatCount" min="0" max="500" placeholder="0"></div>
+        </div>
+        <p class="hint">A pop-up: it shows for its time, then the base mode comes back. Example: every 60 minutes, 8 more
+          times, 300 seconds each. "Keep showing" instead makes it the text-mode message.</p>
         <div class="actions"><button class="primary" id="btnSchedule">Add</button><span class="status" id="schedStatus"></span></div>
       </div>
       <div class="card">

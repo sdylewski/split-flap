@@ -9,6 +9,7 @@
 #include "feeds.h"
 #include "log.h"
 #include "net.h"
+#include "popup_rules.h"
 #include "settings.h"
 #include "text_layout.h"
 #include "units.h"
@@ -25,8 +26,6 @@ static bool showingName = false;
 static uint32_t nameAtMs = 0;
 
 static bool inQuiet = false;
-static String overlayText;         // one-off scheduled message / notification
-static uint32_t overlayUntil = 0;
 static size_t pageIndex = 0;       // weather / bart / printers: which page is showing
 static uint32_t pageUntil = 0;
 
@@ -60,10 +59,6 @@ static int pickOther(int count, int current) {
 }
 
 static bool timeDue(uint32_t at) { return (int32_t)(millis() - at) >= 0; }
-
-void restart() {
-  activeMode = "";  // loop() re-initializes on the next tick
-}
 
 // Cycle through pages, each shown for `seconds` (times its number of lines if it wraps).
 // Called every tick with fresh pages, so changing data (minutes, temperature) updates in place.
@@ -212,7 +207,7 @@ static void runPrinters(const Settings& s) {
   runPages(pages, s.lineSeconds);
 }
 
-// ---- Overlays ------------------------------------------------------------------------------
+// ---- Quiet hours ---------------------------------------------------------------------------
 static bool quietNow(const Settings& s) {
   if (!s.quietEnabled) return false;
   struct tm t;
@@ -221,6 +216,78 @@ static bool quietNow(const Settings& s) {
   return layout::inWindow(now, layout::parseHHMM(s.quietFrom.c_str()), layout::parseHHMM(s.quietTo.c_str()));
 }
 
+// ---- Pop-ups -------------------------------------------------------------------------------
+// A pop-up holds the display for its duration; the base mode (settings.mode) shows otherwise.
+// Who may interrupt whom: popup_rules.h (high > normal > low, equal never interrupts).
+struct Popup {
+  bool active = false;
+  int source = -1;
+  int priority = 0;
+  uint32_t until = 0;
+  String text;  // fixed text ("PRINTY DONE"), or empty ...
+  String mode;  // ... and a mode to run instead ("weather", "bart", ...)
+};
+static Popup current;
+static uint32_t lastPopupEnd = 0;
+static int timerSlot[SRC_COUNT];  // minute-of-day slot already handled per source (-1 = none)
+static String lastTrainKey;
+
+static void resetRenderState() {
+  nextChangeMs = millis();
+  currentItem = -1;
+  lineStop = -1;
+  showingName = false;
+  nameAtMs = 0;
+  pageIndex = 0;
+  pageUntil = 0;
+}
+
+void restart() {
+  activeMode = "";  // loop() re-initializes on the next tick
+}
+
+static bool showPopup(int source, const String& text, const String& mode, uint32_t durationMs, int priority) {
+  const char* id = source >= 0 && source < SRC_COUNT ? SOURCE_IDS[source] : "?";
+  const String& what = text.length() ? text : mode;
+  if (app::displayPaused || app::otaActive || inQuiet) {
+    LOGI("popup", "%s \"%s\" not shown (%s)", id, what.c_str(), inQuiet ? "quiet hours" : "display busy");
+    return false;
+  }
+  if (!popup::admits(priority, current.active, current.priority, millis() - lastPopupEnd)) {
+    LOGD("popup", "%s \"%s\" (%s) ignored: %s", id, what.c_str(), popup::priorityName(priority),
+         current.active ? ("\"" + (current.text.length() ? current.text : current.mode) + "\" is showing").c_str()
+                        : "a pop-up just ended");
+    return false;
+  }
+  current.active = true;
+  current.source = source;
+  current.priority = priority;
+  current.until = millis() + durationMs;
+  current.text = text;
+  current.mode = mode;
+  resetRenderState();
+  LOGI("popup", "%s \"%s\" (%s) for %lus", id, what.c_str(), popup::priorityName(priority),
+       (unsigned long)(durationMs / 1000));
+  if (text.length()) display::show(text, true);
+  return true;
+}
+
+bool notify(const String& text, uint32_t durationMs, int priority) {
+  const SourceRule& rule = settings::current().sources[SRC_NOTIFY];
+  if (!rule.enabled) {
+    LOGI("popup", "notify \"%s\" not shown (notifications are off)", text.c_str());
+    return false;
+  }
+  return showPopup(SRC_NOTIFY, text, "", durationMs ? durationMs : rule.showSeconds * 1000UL,
+                   priority >= 0 ? priority : rule.priority);
+}
+
+void printerEvent(const String& text) {
+  const SourceRule& rule = settings::current().sources[SRC_PRINTERS];
+  if (rule.enabled) showPopup(SRC_PRINTERS, text, "", rule.showSeconds * 1000UL, rule.priority);
+}
+
+// Scheduled messages: show when due; repeating ones move their time forward and stay in the list
 static void checkScheduled() {
   if (!net::timeValid()) return;
   Settings& s = settings::current();
@@ -229,26 +296,99 @@ static void checkScheduled() {
     if (s.scheduled[i].at > now) continue;
     ScheduledMessage m = s.scheduled[i];
     Settings updated = s;
-    updated.scheduled.erase(updated.scheduled.begin() + i);
     if (m.indefinitely) {
       LOGI("modes", "scheduled message \"%s\" - now the text-mode text", m.text.c_str());
+      updated.scheduled.erase(updated.scheduled.begin() + i);
       updated.mode = "text";
       updated.text = m.text;
       settings::commit(updated);
       restart();
-    } else {
-      LOGI("modes", "scheduled message \"%s\" - showing for %us", m.text.c_str(), SCHEDULED_SHOW_MS / 1000);
-      settings::commit(updated);
-      overlayText = m.text;
-      overlayUntil = millis() + SCHEDULED_SHOW_MS;
-      display::show(m.text, true);
+      return;
     }
+    const SourceRule& rule = s.sources[SRC_SCHEDULED];
+    bool late = now - m.at > 600;  // missed by more than 10 min (device was off): don't pop up now
+    if (!late && rule.enabled) {
+      showPopup(SRC_SCHEDULED, m.text, "", (m.showSeconds ? m.showSeconds : rule.showSeconds) * 1000UL, rule.priority);
+    }
+    ScheduledMessage& stored = updated.scheduled[i];
+    if (m.repeatMinutes > 0 && m.repeatCount > 0) {
+      while (stored.at <= now && stored.repeatCount > 0) {  // catch up past missed repeats
+        stored.at += (int64_t)m.repeatMinutes * 60;
+        stored.repeatCount--;
+      }
+      if (stored.at <= now) updated.scheduled.erase(updated.scheduled.begin() + i);
+    } else {
+      updated.scheduled.erase(updated.scheduled.begin() + i);
+    }
+    settings::commit(updated);
     return;  // one per tick
   }
 }
 
+// Timer pop-ups: "every N minutes" on clock-aligned slots (every 15 = :00 :15 :30 :45), inside the
+// source's time window and weekdays. If something more important is showing, it keeps trying for
+// up to 5 minutes into the slot.
+static void checkTimers(const Settings& s) {
+  struct tm t;
+  if (!net::localTime(t)) return;
+  int minute = t.tm_hour * 60 + t.tm_min;
+  for (int i = 0; i < SRC_COUNT; i++) {
+    const SourceRule& r = s.sources[i];
+    if (!r.enabled || r.everyMinutes <= 0 || i == SRC_NOTIFY || i == SRC_SCHEDULED) continue;
+    int slot = minute - (minute % r.everyMinutes);
+    if (timerSlot[i] == slot || minute - slot > 5) continue;
+    if (!popup::dayMatches(r.days, t.tm_wday) || !popup::windowMatches(r.from.c_str(), r.to.c_str(), minute)) {
+      timerSlot[i] = slot;
+      continue;
+    }
+    if (current.active && current.source == i) {
+      timerSlot[i] = slot;  // already showing
+      continue;
+    }
+    if (showPopup(i, "", SOURCE_IDS[i], r.showSeconds * 1000UL, r.priority)) timerSlot[i] = slot;
+  }
+}
+
+// BART: pop up when the next train is exactly `trainMinutes` away (once per train)
+static void checkTrains(const Settings& s) {
+  const SourceRule& r = s.sources[SRC_BART];
+  if (!r.enabled || r.trainMinutes <= 0) return;
+  feeds::Bart b = feeds::bart();
+  if (!b.valid) return;
+  for (const feeds::Departure& d : b.departures) {
+    if (d.minutes != r.trainMinutes) continue;
+    String key = d.destination + "@" + String((long)(time(nullptr) / 60 + d.minutes));
+    if (key == lastTrainKey) return;
+    lastTrainKey = key;
+    struct tm t;
+    if (net::localTime(t) && (!popup::dayMatches(r.days, t.tm_wday) ||
+                              !popup::windowMatches(r.from.c_str(), r.to.c_str(), t.tm_hour * 60 + t.tm_min))) {
+      return;
+    }
+    showPopup(SRC_BART, "", "bart", r.showSeconds * 1000UL, r.priority);
+    return;
+  }
+}
+
+static void renderMode(const String& mode, const Settings& s) {
+  if (mode == "text") display::show(s.text);
+  else if (mode == "clock") runClock(s);
+  else if (mode == "date") runDate(s);
+  else if (mode == "countdown") runCountdown(s);
+  else if (mode == "trainstation") runTrainStation(s);
+  else if (mode == "randomphrase") runRandomPhrase(s);
+  else if (mode == "famousnumbers") runFamousNumbers(s);
+  else if (mode == "weather") runWeather(s);
+  else if (mode == "bart") runBart(s);
+  else if (mode == "printers") runPrinters(s);
+}
+
 // ---- Loop ----------------------------------------------------------------------------------
-void begin() { restart(); }
+void begin() {
+  for (int i = 0; i < SRC_COUNT; i++) timerSlot[i] = -1;
+  lastPopupEnd = millis();
+  restart();
+}
 
 void loop() {
   if (app::displayPaused || app::otaActive) return;
@@ -263,6 +403,7 @@ void loop() {
     inQuiet = quiet;
     LOGI("modes", quiet ? "quiet hours started (until %s)" : "quiet hours ended", s.quietTo.c_str());
     if (quiet) {
+      current.active = false;
       if (s.quietBlank) display::show("", true);
       if (s.quietPowerSave) {
         app::lowPower = true;
@@ -281,47 +422,31 @@ void loop() {
   if (inQuiet) return;
 
   checkScheduled();
-  if (overlayUntil != 0) {
-    if (!timeDue(overlayUntil) || !display::idle()) return;
-    overlayUntil = 0;
-    overlayText = "";
-    restart();
+  checkTimers(s);
+  checkTrains(s);
+
+  // A pop-up is up: show it until its time is over (and its last update has landed)
+  if (current.active) {
+    if (timeDue(current.until) && display::idle()) {
+      LOGD("popup", "%s ended", SOURCE_IDS[current.source]);
+      current.active = false;
+      lastPopupEnd = millis();
+      restart();
+    } else {
+      if (current.text.length()) display::show(current.text);
+      else renderMode(current.mode, s);
+      return;
+    }
   }
 
+  // Base mode
   if (activeMode != s.mode) {
     LOGI("modes", "mode: %s", s.mode.c_str());
     activeMode = s.mode;
-    nextChangeMs = millis();
-    currentItem = -1;
-    lineStop = -1;
-    showingName = false;
-    nameAtMs = 0;
-    pageIndex = 0;
-    pageUntil = 0;
+    resetRenderState();
     if (s.mode == "text") display::show(s.text, true);
   }
-
-  if (s.mode == "text") display::show(s.text);
-  else if (s.mode == "clock") runClock(s);
-  else if (s.mode == "date") runDate(s);
-  else if (s.mode == "countdown") runCountdown(s);
-  else if (s.mode == "trainstation") runTrainStation(s);
-  else if (s.mode == "randomphrase") runRandomPhrase(s);
-  else if (s.mode == "famousnumbers") runFamousNumbers(s);
-  else if (s.mode == "weather") runWeather(s);
-  else if (s.mode == "bart") runBart(s);
-  else if (s.mode == "printers") runPrinters(s);
-}
-
-void notify(const String& text, uint32_t durationMs) {
-  if (app::displayPaused || app::otaActive || inQuiet) {
-    LOGI("modes", "notification \"%s\" not shown (%s)", text.c_str(), inQuiet ? "quiet hours" : "display busy");
-    return;
-  }
-  LOGI("modes", "notification \"%s\" for %lus", text.c_str(), (unsigned long)(durationMs / 1000));
-  overlayText = text;
-  overlayUntil = millis() + durationMs;
-  display::show(text, true);
+  renderMode(s.mode, s);
 }
 
 String status() {
@@ -329,7 +454,11 @@ String status() {
   if (app::otaActive) return "OTA update";
   if (app::displayPaused) return "paused (console)";
   if (inQuiet) return "quiet hours until " + s.quietTo;
-  if (overlayUntil != 0) return "message: " + overlayText;
+  if (current.active) {
+    long left = (long)(current.until - millis()) / 1000;
+    return String("pop-up: ") + SOURCE_IDS[current.source] + " (" +
+           (current.text.length() ? current.text : current.mode) + ", " + String(left < 0 ? 0 : left) + "s left)";
+  }
   return s.mode;
 }
 
