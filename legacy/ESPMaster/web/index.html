@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<title>Split-Flap</title>
+	<meta name="viewport" content="width=device-width, initial-scale=1" charset="utf-8" />
+	<link rel="icon" type="image/png" href="favicon.png" />
+	<link rel="stylesheet" type="text/css" href="style.css" />
+</head>
+
+<body>
+	<div class="topnav float-container">
+		<h1 class="float-left">Split Flap UI</h1>
+		<h4 class="float-right" style="text-align: right;">
+			Version: <label id="labelVersion">N/A</label>
+			<br>
+			Units: <label id="labelUnits">N/A</label>
+			<br>
+			WiFi: <label id="labelWiFiStatus">N/A</label>
+			<br>
+			Last Received: <label id="labelLastMessageReceived">N/A</label>
+		</h4>
+	</div>
+	<div class="content">
+		<!-- Page Load Error Log (shows JavaScript/network errors) - Only shown if PAGE_LOAD_DEBUG_ENABLE is true -->
+		<div id="pageLoadErrorLog" style="background-color: #2d1b1b; color: #f48771; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; max-height: 200px; overflow-y: auto; border-radius: 4px; margin-bottom: 20px; border: 1px solid #f44336; display: none;">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+				<div>
+					<strong style="color: #f48771;">⚠️ Browser Errors & Network Status</strong>
+					<div style="font-size: 0.75em; color: #888; margin-top: 2px;">JavaScript errors, network failures, and page load issues</div>
+				</div>
+				<button onclick="togglePageLoadLog()" style="padding: 4px 8px; font-size: 0.9em; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer;">Hide</button>
+			</div>
+			<div id="pageLoadErrorContent" style="max-height: 150px; overflow-y: auto;">
+				<div style="color: #888;">No errors yet...</div>
+			</div>
+		</div>
+		
+		<!-- Debug Log Viewer (collapsible, shown during page load) - Only shown if PAGE_LOAD_DEBUG_ENABLE is true -->
+		<div id="debugLogViewer" style="background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; max-height: 200px; overflow-y: auto; border-radius: 4px; margin-bottom: 20px; border: 1px solid #3e3e42; display: none;">
+			<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+				<div>
+					<strong style="color: #4ec9b0;">Page Load Debug Log</strong>
+					<div style="font-size: 0.75em; color: #888; margin-top: 2px;">AJAX request status, JSON parsing, and page initialization events</div>
+				</div>
+				<div>
+					<button onclick="copyDebugLog()" style="padding: 4px 8px; font-size: 0.9em; background: #0e639c; color: white; border: none; border-radius: 3px; cursor: pointer; margin-right: 5px;">Copy Full Log</button>
+					<button onclick="toggleDebugLog()" style="padding: 4px 8px; font-size: 0.9em; background: #0e639c; color: white; border: none; border-radius: 3px; cursor: pointer;">Hide</button>
+				</div>
+			</div>
+			<div id="debugLogContent" style="max-height: 150px; overflow-y: auto;">
+				<div style="color: #888;">Loading logs...</div>
+			</div>
+		</div>
+		<div id="initialLoading" class="lds-facebook"><div></div><div></div><div></div></div>
+
+		<div id="loadedContent" class="hidden">
+			<div id="bannerMessage" class="banner-message hidden"></div>
+
+			<form action="/" method="post" id="form">
+				<!-- Top Section: Mode Selection (Left) and Mode Options (Right) -->
+				<div class="card-grid mode-selection-grid">
+					<div class="card mode-selection-card">
+						<p class="card-title">Select Mode</p>
+						<div class="mode-list">
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeClock" name="deviceMode" value="clock" />
+								<label for="modeClock">Clock Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeDate" name="deviceMode" value="date" />
+								<label for="modeDate">Date Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeCountdown" name="deviceMode" value="countdown" />
+								<label for="modeCountdown">Countdown Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeText" name="deviceMode" value="text" />
+								<label for="modeText">Text Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeTrainStation" name="deviceMode" value="trainstation" />
+								<label for="modeTrainStation">Train Station Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeRandomPhrase" name="deviceMode" value="randomphrase" />
+								<label for="modeRandomPhrase">Random Phrase Mode</label>
+							</p>
+
+							<p>
+								<input onchange="setDeviceModeTab(this.value)" type="radio" id="modeFamousNumbers" name="deviceMode" value="famousnumbers" />
+								<label for="modeFamousNumbers">Famous Numbers Mode</label>
+							</p>
+						</div>
+					</div>
+
+					<div class="card mode-options-card">
+						<p class="card-title">Mode Options</p>
+						<div id="mode-options-content">
+							<div id="tab-text" class="tab">
+								<p>
+									<label for="inputText">Enter Text</label>
+									<br>
+									<input type="text" id="inputText" name="inputText" onkeyup="updateCharacterCount()" autocomplete="off" maxlength="75" style="width: 100%;" />
+									<span class="count">
+										<label id="labelCharacterCount">0</label> Character(s)
+									</span>
+									<span class="count">
+										<label id="labelLineCount">1</label> line(s)
+									</span>
+									<span>
+										<input type="button" value="+ Newline" onclick="addNewline()"/>
+									</span>
+								</p>
+
+								<p>
+									<label for="inputCheckboxScheduleEnabled">Schedule Message?</label>
+									<input type="checkbox" id="inputCheckboxScheduleEnabled" name="scheduleEnabled"	onchange="showHideScheduledMessageInput()" />
+									<div id="divScheduleOptions" class="hidden">
+										<p>
+											<label for="scheduledDateTime">Show Indefinitely?</label>
+											<input type="checkbox" id="inputCheckboxShowIndefinitely" name="scheduleShowIndefinitely" />
+										</p>
+										<p>
+											<input type="datetime-local" id="inputScheduledDateTime" name="scheduleDateTime">
+											<input type="hidden" id="inputHiddenScheduledDateTimeUnix" name="scheduledDateTimeUnix" value="0" />
+										</p>
+									</div>
+								</p>				
+							</div>
+
+							<div id="tab-countdown" class="tab hidden">
+								<p>
+									<label for="inputCountdownDateTime">Countdown End Date</label>
+									<br>
+									<input type="date" id="inputCountdownDateTime" name="countdownDateTime" style="width: 100%;">
+									<input type="hidden" id="inputHiddenCountdownDateTimeUnix" name="countdownDateTimeUnix" value="0" />
+								</p>
+							</div>
+
+							<div id="tab-trainstation" class="tab hidden">
+								<p>
+									<label for="inputTrainStationType">Display Type</label>
+									<br>
+									<select id="inputTrainStationType" name="trainStationType" onchange="updateTrainStationLineOptions()" style="width: 100%; padding: 5px; font-size: 1em;">
+										<option value="random">Random Stations</option>
+										<option value="line">Train Lines (in order)</option>
+										<option value="bart">BART Lines (in order)</option>
+									</select>
+									<span style="font-size: 0.9em; color: #888;">Choose how to display train stations</span>
+								</p>
+								<p id="trainStationLineContainer" style="display: none;">
+									<label for="inputTrainStationLine">Select Line</label>
+									<br>
+									<select id="inputTrainStationLine" name="trainStationLine" style="width: 100%; padding: 5px; font-size: 1em;">
+										<option value="">-- Select a line --</option>
+									</select>
+									<span style="font-size: 0.9em; color: #888;">Choose which line to display</span>
+								</p>
+								<p>
+									<label for="inputTrainStationDelay">Time Between Changes (seconds)</label>
+									<br>
+									<input type="number" id="inputTrainStationDelay" name="trainStationDelay" min="5" max="3600" value="30" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 30)</span>
+								</p>
+								<p id="trainStationRandomListContainer" style="display: none;">
+									<label for="inputTrainStationRandomList">Random Stations List (comma-separated)</label>
+									<br>
+									<textarea id="inputTrainStationRandomList" name="trainStationRandomList" rows="6" style="width: 100%; font-family: monospace;" placeholder="Enter station names separated by commas, e.g.: GRAND CENT, PENN STN., UNION STN. Leave empty to use default list."></textarea>
+									<span style="font-size: 0.9em; color: #888;">Enter station names separated by commas. Each name should be 10 characters or less. Leave empty to use the default list.</span>
+								</p>
+								<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+									<span id="trainStationDescription">Displays random famous train stations from Europe and the US. The display will automatically cycle through stations at the specified interval.</span>
+								</p>
+							</div>
+
+							<div id="tab-randomphrase" class="tab hidden">
+								<p>
+									<label for="inputRandomPhraseList">Phrases (comma-separated)</label>
+									<br>
+									<textarea id="inputRandomPhraseList" name="randomPhraseList" rows="6" style="width: 100%; font-family: monospace;" placeholder="Enter phrases separated by commas, e.g.: Hello World, Good Morning, Have a Nice Day"></textarea>
+									<span style="font-size: 0.9em; color: #888;">Enter multiple phrases separated by commas. Each phrase will be displayed randomly.</span>
+								</p>
+								<p style="margin-top: 1.5em;">
+									<label for="inputRandomPhraseMinDelay">Minimum Time Between Changes (seconds)</label>
+									<br>
+									<input type="number" id="inputRandomPhraseMinDelay" name="randomPhraseMinDelay" min="5" max="3600" value="10" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 10)</span>
+								</p>
+								<p>
+									<label for="inputRandomPhraseMaxDelay">Maximum Time Between Changes (seconds)</label>
+									<br>
+									<input type="number" id="inputRandomPhraseMaxDelay" name="randomPhraseMaxDelay" min="5" max="3600" value="60" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 60)</span>
+								</p>
+								<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+									Displays random phrases from your list. The time between changes will be randomly selected between the minimum and maximum values you specify.
+								</p>
+							</div>
+
+							<div id="tab-famousnumbers" class="tab hidden">
+								<p>
+									<label for="inputFamousNumbersList">Famous Numbers List (comma-separated pairs)</label>
+									<br>
+									<textarea id="inputFamousNumbersList" name="famousNumbersList" rows="8" style="width: 100%; font-family: monospace;" placeholder="Enter number,name pairs separated by commas, e.g.: 3.14159,PI, 2.71828,EULER E, 1.41421,SQRT 2. Leave empty to use default list."></textarea>
+									<span style="font-size: 0.9em; color: #888;">Format: number1,name1,number2,name2,... Each number and name should be 10 characters or less. Leave empty to use the default list.</span>
+								</p>
+								<p>
+									<label for="inputFamousNumbersMinDelay">Minimum Time Between Changes (seconds)</label>
+									<br>
+									<input type="number" id="inputFamousNumbersMinDelay" name="famousNumbersMinDelay" min="5" max="3600" value="10" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 10)</span>
+								</p>
+								<p>
+									<label for="inputFamousNumbersMaxDelay">Maximum Time Between Changes (seconds)</label>
+									<br>
+									<input type="number" id="inputFamousNumbersMaxDelay" name="famousNumbersMaxDelay" min="5" max="3600" value="60" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(5-3600 seconds, default: 60)</span>
+								</p>
+								<p>
+									<label for="inputFamousNumbersNameDelay">Delay Before Showing Name (seconds)</label>
+									<br>
+									<input type="number" id="inputFamousNumbersNameDelay" name="famousNumbersNameDelay" min="1" max="60" value="5" style="width: 100%;" />
+									<span style="font-size: 0.9em; color: #888;">(1-60 seconds, default: 5)</span>
+								</p>
+								<p style="font-size: 0.9em; color: #888; margin-top: 1em;">
+									Displays famous scientific constants and numbers. First shows the number, then after the delay, shows the name of the constant. The display will automatically cycle through numbers at random intervals between the min and max delay.
+								</p>
+							</div>
+
+							<div id="tab-clock" class="tab hidden">
+								<p style="font-size: 0.9em; color: #888;">
+									Displays the current time. Clock format is set in the header configuration.
+								</p>
+							</div>
+
+							<div id="tab-date" class="tab hidden">
+								<p style="font-size: 0.9em; color: #888;">
+									Displays the current date.
+								</p>
+							</div>
+						</div>
+					</div>
+				</div>
+
+				<!-- Bottom Section: Speed and Alignment (Full Width) -->
+				<div class="card-grid">
+					<div class="card card-full">
+						<p class="card-title">Display Settings</p>
+						<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; padding: 1rem;">
+							<div>
+								<p style="font-size: 1.2rem; margin-bottom: 1rem;">Text Alignment</p>
+								<div class="alignment-inputs" style="width: 100%;">
+									<p>
+										<input type="radio" id="radioLeft" name="alignment" autocomplete="off" value="left" />
+										<label for="radioLeft">Left</label>
+									</p>
+									<p>
+										<input type="radio" id="radioCenter" name="alignment" autocomplete="off" value="center" />
+										<label for="radioCenter">Center</label>
+									</p>
+									<p>
+										<input type="radio" id="radioRight" name="alignment" autocomplete="off" value="right" />
+										<label for="radioRight">Right</label>
+									</p>
+								</div>
+							</div>
+							<div>
+								<p style="font-size: 1.2rem; margin-bottom: 1rem;">Flap Speed</p>
+								<div style="padding: 0 5%;">
+									<input type="range" oninput="updateSpeedSlider(this)" id="rangeFlapSpeed" name="flapSpeed"
+										min="1" max="100" step="1" value="80" class="slider" />
+									<p class="state" style="margin-top: 0.5rem;">Speed:
+										<span id="rangeFlapSpeedValue" />80 &percnt;
+									</p>
+								</div>
+							</div>
+						</div>
+						<div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid #ddd;">
+							<p>
+								<label for="inputQuietHoursEnabled">Quiet Hours (Lockout Mode)</label>
+								<br>
+								<input type="checkbox" id="inputQuietHoursEnabled" name="quietHoursEnabled" onchange="updateQuietHoursTimeVisibility(); updateQuietHoursHiddenInput()" />
+								<span style="font-size: 0.9em; color: #888;">Prevent flap movement during specified hours</span>
+								<input type="hidden" id="inputQuietHoursEnabledHidden" name="quietHoursEnabled" value="false" />
+							</p>
+							<p id="quietHoursTimeContainer" style="display: none; margin-top: 1rem;">
+								<label for="inputQuietHoursFrom">From Time (24-hour format)</label>
+								<br>
+								<input type="time" id="inputQuietHoursFrom" name="quietHoursFrom" value="22:00" style="width: auto;" />
+								<br>
+								<label for="inputQuietHoursTo" style="margin-top: 0.5em;">To Time (24-hour format)</label>
+								<br>
+								<input type="time" id="inputQuietHoursTo" name="quietHoursTo" value="08:00" style="width: auto;" />
+								<span style="font-size: 0.9em; color: #888;">Flaps will not move during these hours (e.g., 10pm to 8am)</span>
+							</p>
+						</div>
+						<div style="margin-top: 1.5rem; text-align: center;">
+							<div id="containerSubmit">
+								<input type="submit" value="Submit" />
+							</div>
+						</div>
+					</div>
+				</div>
+			</form>
+
+			<div class="card-grid">
+				<div class="card card-full">
+					<p class="card-title">Actions</p>
+
+					<div class="actions">
+						<a id="linkActionOtaUpdate" href="/ota">
+							OTA Update
+						</a>
+						<a id="linkActionReboot" href="/reboot" onclick="return confirm('Are you sure you want reboot device?')">
+							Reboot
+						</a>
+						<a id="linkActionUnitCalibration" href="/reset-units" onclick="return confirm('Are you sure you want to Reset Units?')">
+							Reset Unit Calibration
+						</a>
+						<a id="linkActionResetWifi" href="/reset-wifi" onclick="return confirm('Are you sure you want to Reset WiFi settings?')">
+							Reset WiFi
+						</a>
+						<a id="linkActionI2CScan" href="#" onclick="scanI2CBus(); return false;">
+							Scan I2C Bus
+						</a>
+					</div>
+				</div>
+			</div>
+
+			<div class="card-grid">
+			<div id="unitTestingCard" class="card card-full" style="display: none;">
+				<p class="card-title">Unit Testing</p>
+				<div style="font-size: 0.75em; color: #888; margin-bottom: 10px;">Test individual units for I2C communication, read/write operations, and error rates</div>
+					<div id="containerUnitTesting" style="background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; border-radius: 4px; overflow-x: auto;">
+						<table style="width: 100%; border-collapse: collapse; font-size: 0.9em;">
+							<thead>
+								<tr style="background-color: #2d2d30; border-bottom: 2px solid #3e3e42;">
+									<th style="padding: 8px; text-align: left; border-right: 1px solid #3e3e42;">Unit</th>
+									<th style="padding: 8px; text-align: left; border-right: 1px solid #3e3e42;">Status</th>
+									<th style="padding: 8px; text-align: left; border-right: 1px solid #3e3e42;">Last Test</th>
+									<th style="padding: 8px; text-align: left;">Actions</th>
+								</tr>
+							</thead>
+							<tbody id="unitTestingTableBody">
+								<tr><td colspan="4" style="padding: 10px; text-align: center; color: #888;">Loading units...</td></tr>
+							</tbody>
+						</table>
+					</div>
+					<div id="containerUnitTestResults" style="display: none; margin-top: 15px; padding: 15px; background-color: #252526; border: 1px solid #3e3e42; border-radius: 4px;">
+						<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+							<h3 style="color: #4ec9b0; margin: 0;">Test Results: Unit <span id="testedUnitNumber">-</span></h3>
+							<button onclick="closeUnitTestResults()" style="padding: 5px 10px; font-size: 0.9em; background: #f44336; color: white; border: none; border-radius: 3px; cursor: pointer;">Close</button>
+						</div>
+						<div id="unitTestResultsContent" style="font-family: 'Courier New', monospace; font-size: 0.85em; white-space: pre-wrap; max-height: 400px; overflow-y: auto;">
+							<div style="color: #888;">Running test...</div>
+						</div>
+					</div>
+				</div>
+			</div>
+
+			<form>
+				<div class="card-grid">
+					<div class="card card-full">
+						<p class="card-title">Scheduled Messages (<span id="spanScheduledMessageCount">0</span>)</p>
+
+						<div id="containerScheduledMessages" class="scheduled-messages">
+						</div>
+					</div>
+				</div>
+			</form>
+
+			<div class="card-grid">
+				<div class="card card-full">
+					<div style="margin-bottom: 8px;">
+						<p class="card-title" style="margin-bottom: 4px;">ESP8266 Serial Log (<span id="spanLogCount">0</span> messages)</p>
+						<div style="font-size: 0.75em; color: #888; margin-bottom: 8px;">Firmware debug output from ESP8266: startup messages, I2C status, unit communication, and system events</div>
+						<div>
+							<button id="btnToggleSerialLog" onclick="toggleSerialLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Hide</button>
+							<button onclick="copySerialLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Copy Full Log</button>
+							<button onclick="refreshLog()" style="float: right; padding: 5px 10px; font-size: 0.9em; margin-right: 5px;">Refresh</button>
+						</div>
+					</div>
+					<div id="containerSerialLog" style="background-color: #1e1e1e; color: #d4d4d4; font-family: 'Courier New', monospace; font-size: 0.85em; padding: 10px; max-height: 400px; overflow-y: auto; border-radius: 4px;">
+						<div style="color: #888;">Loading log...</div>
+					</div>
+				</div>
+			</div>
+			
+			<div style="margin-top: 20px; padding: 15px; background-color: #2d2d30; border-radius: 4px; text-align: center; color: #cccccc; font-size: 0.9em;">
+				<p style="margin: 0;">
+					<strong>Units:</strong> <span id="spanConnectedUnits">-</span> / <span id="spanExpectedUnits">-</span> connected
+				</p>
+			</div>
+		</div>
+	</div>
+	<script src="script.js" /></script>
+</body>
+
+</html>

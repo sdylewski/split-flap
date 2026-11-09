@@ -5,14 +5,12 @@
 > - Additional software updates by [JonnyBooker](https://github.com/JonnyBooker/split-flap)
 > - Firmware/UI enhancements by [scientress](https://github.com/scientress/split-flap)
 
-**What’s new in this fork**
+**What's new in this fork**
 
-- Arduino IDE 2.x support (LittleFS workflow + updated library guidance)
-- Expanded debugging (startup log page, error status panel, page-load log,
-  copyable serial log, ESP-01S LED indicator)
-- Stability fixes for the web UI, `/settings` endpoint and I²C diagnostics
-- Consolidated documentation under `docs/` with separate printing, hardware and
-  software guides
+- ESP32 master (wired into the ESP-01 header) with a new web UI, JSON API and OTA updates
+- A console on the web page, telnet and USB serial, with in-place unit calibration
+- Unit firmware 2.x: magnet re-sync, learned steps per turn, diagnostics and an event log
+- PlatformIO builds with pinned versions, host tests and GitHub Actions CI
 
 Welcome to the documentation hub for the split-flap display. The goal of this
 folder is to provide a single place for build instructions, firmware guidance
@@ -25,15 +23,17 @@ below and then dive into the topic that is most relevant for you.
    electronic components ready. See [`printing.md`](./printing.md).
 2. **Assemble the hardware** – solder the PCBs, build the units, wire
    everything and close the enclosure. See [`hardware-build.md`](./hardware-build.md).
-3. **Configure the software** – flash the ESPMaster firmware, calibrate each
-   unit, set DIP switches and verify/debug the system. See
-   [`software.md`](./software.md).
+3. **Wire the master** – connect the ESP32 to the ESP-01 header. See
+   [`esp32.md`](./esp32.md).
+4. **Configure the software** – flash the master and unit firmware, set DIP switches,
+   calibrate each unit and verify the system. See [`software.md`](./software.md) and
+   [`console.md`](./console.md).
 
 ### BOM & Purchasing Notes
 
-- The recommended controller is the **ESP-01S** (not the original ESP-01). The
-  ESP-01S has better WiFi performance, and routes its onboard blue LED to GPIO2 (so the firmware can drive the
-  error indicator without tying up TX/RX) 
+- The master controller is an **original ESP32 dev board** (ESP32-WROOM-32), jumpered into
+  the ESP-01 header; see [`esp32.md`](./esp32.md). The old ESP-01S firmware is kept in
+  `legacy/`.
 - For a consolidated list of screws, inserts, printed parts and electronics,
   refer to [`printing.md`](./printing.md).
 
@@ -43,10 +43,10 @@ below and then dive into the topic that is most relevant for you.
 | Path | Description |
 | --- | --- |
 | `docs/` | Documentation hub (this folder) |
-| `ESPMaster/` | ESP-01S firmware and web assets |
-| `Unit/` | Arduino Nano firmware for each flap unit |
-| `EEPROM_Write_Offset/` | Basic utility sketch to manually set per-unit offsets |
-| `InteractiveCalibration/` | Interactive calibration tool with step-by-step guidance |
+| `firmware/master/` | ESP32 master firmware and web UI (PlatformIO) |
+| `firmware/unit/` | Arduino Nano firmware for each flap unit (PlatformIO) |
+| `firmware/shared/` | The I2C protocol shared by both |
+| `legacy/` | Previous Arduino IDE firmware and USB calibration tools |
 | `PCB/` | Schematics, Gerbers and pick-and-place files |
 | `Images/` | Reference photos used by the docs |
 
@@ -56,23 +56,25 @@ below and then dive into the topic that is most relevant for you.
 | --- | --- |
 | [`printing.md`](./printing.md) | BOM, screw list, printed part manifest and flap printing tips |
 | [`hardware-build.md`](./hardware-build.md) | PCB soldering, unit assembly and enclosure build |
-| [`software.md`](./software.md) | Firmware setup, calibration, DIP switches, debugging and usage |
-| [`interactive-calibration.md`](./interactive-calibration.md) | Guide for using the Interactive Calibration tool |
+| [`esp32.md`](./esp32.md) | Wiring the ESP32 master into the ESP-01 header, power |
+| [`software.md`](./software.md) | Building and flashing, web UI, settings, API, LED codes, troubleshooting |
+| [`console.md`](./console.md) | Console commands, calibration (`cal`), reading the unit diagnostics |
+| [`interactive-calibration.md`](./interactive-calibration.md) | Legacy USB calibration tool |
 | [`SplitFlapInstructions.md`](./SplitFlapInstructions.md) | Legacy PDF content converted to Markdown for archival/reference |
 
 ## Feature Highlights
 
-- Web UI with scheduling, OTA updates and diagnostics
-- Non-blocking firmware that keeps the web server responsive
-- Built-in WiFi setup portal and optional static IP mode
-- Detailed debug tooling: startup page, error log, serial log viewer and LED
-  error indicator (ESP-01S only)
+- Web UI with modes, scheduling, quiet hours, unit diagnostics, a console and a live log
+- OTA updates and a JSON API
+- Units that re-sync at the magnet, learn their steps per turn and report problems
+- Self-healing I2C bus and status LED blink codes
 
 ## Need Help?
 
 - Hardware or mechanical questions → start with [`printing.md`](./printing.md)
   and [`hardware-build.md`](./hardware-build.md).
-- Firmware configuration or troubleshooting → see [`software.md`](./software.md).
+- Firmware configuration or troubleshooting → see [`software.md`](./software.md) and
+  [`console.md`](./console.md).
 - Historical instructions → consult [`SplitFlapInstructions.md`](./SplitFlapInstructions.md).
 
 Spotted an issue or have an improvement? Feel free to open an issue or pull

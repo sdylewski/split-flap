@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Flappy</title>
+  <link rel="icon" href="favicon.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header>
+    <div class="title">
+      <h1>Flappy</h1>
+      <span id="chipMode" class="chip">…</span>
+    </div>
+    <div id="board" class="board" aria-label="What the display shows"></div>
+    <div class="chips">
+      <span id="chipWifi" class="chip">WiFi …</span>
+      <span id="chipTime" class="chip">…</span>
+      <span id="chipUnits" class="chip">Units …</span>
+      <span id="chipOffline" class="chip bad" hidden>Not connected to the display</span>
+    </div>
+  </header>
+
+  <nav id="tabs">
+    <button data-tab="display" class="active">Display</button>
+    <button data-tab="schedule">Schedule</button>
+    <button data-tab="units">Units</button>
+    <button data-tab="console">Console</button>
+    <button data-tab="system">System</button>
+  </nav>
+
+  <main>
+    <!-- ================= Display ================= -->
+    <section id="tab-display" class="tab active">
+      <div class="card">
+        <h2>Mode</h2>
+        <div class="segmented" id="modeButtons">
+          <button data-mode="text">Text</button>
+          <button data-mode="clock">Clock</button>
+          <button data-mode="date">Date</button>
+          <button data-mode="countdown">Countdown</button>
+          <button data-mode="trainstation">Train station</button>
+          <button data-mode="randomphrase">Phrases</button>
+          <button data-mode="famousnumbers">Numbers</button>
+        </div>
+
+        <div class="mode-panel" data-panel="text">
+          <label for="text">Message</label>
+          <textarea id="text" rows="2" maxlength="200" placeholder="HELLO WORLD"></textarea>
+          <p class="hint" id="textHint">Words wrap onto several lines; a new line in the box forces a break.</p>
+        </div>
+        <div class="mode-panel" data-panel="clock">
+          <label class="check"><input type="checkbox" id="clock24h"> 24-hour clock</label>
+        </div>
+        <div class="mode-panel" data-panel="date">
+          <label for="dateFormat">Format</label>
+          <select id="dateFormat">
+            <option value="%a %b %d">SUN NOV 08</option>
+            <option value="%b %d %Y">NOV 08 2026</option>
+            <option value="%m.%d.%Y">11.08.2026</option>
+            <option value="%d.%m.%Y">08.11.2026</option>
+            <option value="%Y-%m-%d">2026-11-08</option>
+          </select>
+        </div>
+        <div class="mode-panel" data-panel="countdown">
+          <label for="countdownDate">Count down to</label>
+          <input type="date" id="countdownDate">
+          <p class="hint">Shows the days left, e.g. "12 DAYS".</p>
+        </div>
+        <div class="mode-panel" data-panel="trainstation">
+          <div class="row">
+            <div><label for="trainType">Show</label>
+              <select id="trainType">
+                <option value="random">Random stations</option>
+                <option value="line">A train line, in order</option>
+                <option value="bart">A BART line, in order</option>
+              </select></div>
+            <div><label for="trainLine">Line</label><select id="trainLine"></select></div>
+            <div><label for="trainSeconds">Seconds per station</label><input type="number" id="trainSeconds" min="5" max="3600"></div>
+          </div>
+          <label for="trainStations">Your own station list (comma separated, empty = built-in)</label>
+          <textarea id="trainStations" rows="3" placeholder="GRAND CENT, PENN STN., UNION STN."></textarea>
+        </div>
+        <div class="mode-panel" data-panel="randomphrase">
+          <label for="phrases">Phrases (comma separated)</label>
+          <textarea id="phrases" rows="4" placeholder="HELLO, GOOD MORNING, HAVE A NICE DAY"></textarea>
+          <div class="row">
+            <div><label for="phraseMinSeconds">Min seconds</label><input type="number" id="phraseMinSeconds" min="5" max="3600"></div>
+            <div><label for="phraseMaxSeconds">Max seconds</label><input type="number" id="phraseMaxSeconds" min="5" max="3600"></div>
+          </div>
+        </div>
+        <div class="mode-panel" data-panel="famousnumbers">
+          <label for="numbers">Number, name pairs (comma separated, empty = built-in)</label>
+          <textarea id="numbers" rows="4" placeholder="3.14159, PI, 2.71828, EULER E"></textarea>
+          <div class="row">
+            <div><label for="numberMinSeconds">Min seconds</label><input type="number" id="numberMinSeconds" min="5" max="3600"></div>
+            <div><label for="numberMaxSeconds">Max seconds</label><input type="number" id="numberMaxSeconds" min="5" max="3600"></div>
+            <div><label for="numberNameSeconds">Name after (s)</label><input type="number" id="numberNameSeconds" min="1" max="60"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Look</h2>
+        <div class="row">
+          <div>
+            <label>Alignment</label>
+            <div class="segmented small" id="alignButtons">
+              <button data-align="left">Left</button>
+              <button data-align="center">Center</button>
+              <button data-align="right">Right</button>
+            </div>
+          </div>
+          <div><label for="speed">Speed <span id="speedValue"></span></label><input type="range" id="speed" min="1" max="100"></div>
+          <div><label for="lineSeconds">Seconds per line</label><input type="number" id="lineSeconds" min="1" max="60"></div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button class="primary" id="btnApply">Show on display</button>
+        <span class="status" id="applyStatus"></span>
+      </div>
+    </section>
+
+    <!-- ================= Schedule ================= -->
+    <section id="tab-schedule" class="tab">
+      <div class="card">
+        <h2>Schedule a message</h2>
+        <label for="schedText">Message</label>
+        <input type="text" id="schedText" maxlength="200" placeholder="HAPPY BIRTHDAY">
+        <div class="row">
+          <div><label for="schedAt">When</label><input type="datetime-local" id="schedAt"></div>
+          <div><label class="check"><input type="checkbox" id="schedForever"> Keep showing it (becomes the text-mode message)</label></div>
+        </div>
+        <p class="hint">Without "keep showing", it appears for 7.5 seconds and the display goes back to what it was doing.</p>
+        <div class="actions"><button class="primary" id="btnSchedule">Add</button><span class="status" id="schedStatus"></span></div>
+      </div>
+      <div class="card">
+        <h2>Upcoming</h2>
+        <ul id="schedList" class="list"></ul>
+      </div>
+      <div class="card">
+        <h2>Quiet hours</h2>
+        <label class="check"><input type="checkbox" id="quietEnabled"> No display changes during these hours</label>
+        <div class="row">
+          <div><label for="quietFrom">From</label><input type="time" id="quietFrom"></div>
+          <div><label for="quietTo">To</label><input type="time" id="quietTo"></div>
+          <div><label class="check"><input type="checkbox" id="quietBlank"> Blank the display first</label></div>
+        </div>
+        <div class="actions"><button id="btnQuiet">Save</button><span class="status" id="quietStatus"></span></div>
+      </div>
+    </section>
+
+    <!-- ================= Units ================= -->
+    <section id="tab-units" class="tab">
+      <div class="card">
+        <h2>Units</h2>
+        <div class="actions">
+          <button data-command="ident">Identify (show addresses)</button>
+          <button data-command="rehome all">Re-home all</button>
+          <button data-command="resume">Resume normal mode</button>
+        </div>
+        <div class="table-wrap">
+          <table id="unitTable">
+            <thead><tr>
+              <th>#</th><th>Status</th><th>Firmware</th><th title="Supply voltage now (lowest while moving)">Supply</th>
+              <th title="Times the magnet was passed / steps corrected at the magnet (last, max)">Magnet</th>
+              <th title="Magnet not found where expected">Misses</th><th>Boots</th><th>I2C errors</th><th></th>
+            </tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+        <p class="hint">Diagnostics (supply, magnet, misses, boots) need unit firmware 2.0.0. A growing magnet
+          correction or miss count means the drum slips or the hall sensor is flaky. Calibrate opens the console.</p>
+      </div>
+    </section>
+
+    <!-- ================= Console ================= -->
+    <section id="tab-console" class="tab">
+      <div class="card console-card">
+        <div class="actions">
+          <button data-console="help">help</button>
+          <button data-console="status">status</button>
+          <button data-console="units">units</button>
+          <button data-console="log info">log on</button>
+          <button data-console="log off">log off</button>
+          <span class="status" id="wsStatus"></span>
+        </div>
+        <pre id="consoleOut" class="terminal" tabindex="0"></pre>
+        <form id="consoleForm" class="console-input">
+          <span>&gt;</span>
+          <input type="text" id="consoleLine" autocomplete="off" autocapitalize="off" spellcheck="false"
+                 placeholder="Type a command (help) - during 'cal' just press Enter when a flap drops">
+          <button type="submit">Send</button>
+        </form>
+      </div>
+    </section>
+
+    <!-- ================= System ================= -->
+    <section id="tab-system" class="tab">
+      <div class="card">
+        <h2>Device</h2>
+        <dl id="deviceInfo" class="facts"></dl>
+        <div class="actions"><button id="btnReboot" class="danger">Reboot</button></div>
+      </div>
+      <div class="card">
+        <h2>Settings</h2>
+        <div class="row">
+          <div><label for="timezoneName">Time zone</label><select id="timezoneName"></select></div>
+          <div><label for="timezone">POSIX TZ string</label><input type="text" id="timezone"></div>
+        </div>
+        <div class="row">
+          <div><label for="unitCount">Number of units</label><input type="number" id="unitCount" min="1" max="16"></div>
+          <div><label for="logLevel">Serial log level</label>
+            <select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option><option>off</option></select></div>
+        </div>
+        <div class="actions"><button id="btnSystem">Save</button><span class="status" id="systemStatus"></span></div>
+      </div>
+      <div class="card">
+        <h2>Log</h2>
+        <div class="actions">
+          <label class="check"><input type="checkbox" id="logFollow" checked> Follow</label>
+          <button id="btnCopyLog">Copy</button>
+        </div>
+        <pre id="logOut" class="terminal small"></pre>
+      </div>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

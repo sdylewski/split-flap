@@ -1,4 +1,9 @@
-# Interactive Calibration Tool
+# Interactive Calibration Tool (legacy)
+
+> **Superseded.** Calibrate units in place with the console's `cal` command instead - no USB
+> needed, works from the web page. See [console.md](./console.md#calibrating-a-unit-cal).
+> This USB tool is kept in [`legacy/InteractiveCalibration`](../legacy/InteractiveCalibration)
+> and only works with the old 1.x unit firmware.
 
 The Interactive Calibration tool (`InteractiveCalibration/InteractiveCalibration.ino`) is an improved alternative to the basic `EEPROM_Write_Offset.ino` utility. It guides you through a step-by-step calibration process to find the optimal offset value for each unit.
 

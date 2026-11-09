@@ -1,0 +1,56 @@
+name: Firmware
+
+on:
+  push:
+    branches: [main]
+    paths: ['firmware/**', '.github/workflows/firmware.yml']
+  pull_request:
+    paths: ['firmware/**', '.github/workflows/firmware.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.platformio
+          key: pio-${{ runner.os }}-${{ hashFiles('firmware/*/platformio.ini') }}
+
+      - name: Install PlatformIO
+        run: pip install platformio==6.2.0
+
+      - name: Host tests (text layout, protocol)
+        working-directory: firmware/master
+        run: pio test -e native
+
+      - name: Master (ESP32) firmware + web files
+        working-directory: firmware/master
+        run: |
+          cp src/secrets.h.example src/secrets.h
+          pio run -e esp32
+          pio run -e esp32 -t buildfs
+
+      - name: Unit (Nano) firmware, both bootloaders
+        working-directory: firmware/unit
+        run: pio run
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: |
+            firmware/master/.pio/build/esp32/firmware.bin
+            firmware/master/.pio/build/esp32/littlefs.bin
+            firmware/unit/.pio/build/nano/firmware.hex
+            firmware/unit/.pio/build/nano_old/firmware.hex

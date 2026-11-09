@@ -1,0 +1,144 @@
+:root {
+  --bg: #f4f4f1;
+  --card: #ffffff;
+  --text: #1d1d1f;
+  --muted: #6b6b70;
+  --line: #dcdcd6;
+  --accent: #c2410c;
+  --accent-text: #ffffff;
+  --good: #15803d;
+  --warn: #b45309;
+  --bad: #b91c1c;
+  --tile: #1f1f22;
+  --tile-text: #f5f0e1;
+  --term: #16161a;
+  --term-text: #d8d8d0;
+  --radius: 10px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111113;
+    --card: #1b1b1f;
+    --text: #ececec;
+    --muted: #9b9ba3;
+    --line: #2e2e35;
+    --accent: #f97316;
+    --accent-text: #111113;
+    --good: #4ade80;
+    --warn: #fbbf24;
+    --bad: #f87171;
+    --tile: #050506;
+    --term: #0b0b0d;
+    color-scheme: dark;
+  }
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+header, nav, main { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+header { padding-top: 18px; }
+.title { display: flex; align-items: center; gap: 12px; }
+h1 { font-size: 22px; margin: 0; letter-spacing: 0.02em; }
+h2 { font-size: 15px; margin: 0 0 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* The flap board */
+.board { display: flex; gap: 5px; margin: 16px 0 12px; flex-wrap: nowrap; }
+.tile {
+  flex: 1 1 0; min-width: 0; aspect-ratio: 3 / 4; max-width: 64px;
+  background: var(--tile); color: var(--tile-text); border-radius: 6px;
+  display: flex; align-items: center; justify-content: center; position: relative;
+  font: 700 clamp(16px, 5vw, 34px)/1 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  box-shadow: inset 0 -2px 0 rgba(255,255,255,0.04);
+}
+.tile::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 1px; background: rgba(0,0,0,0.65); }
+.tile.missing { background: repeating-linear-gradient(45deg, var(--tile), var(--tile) 6px, #3a1a1a 6px, #3a1a1a 12px); }
+.tile.moving { color: var(--accent); }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip { font-size: 13px; padding: 3px 10px; border-radius: 999px; background: var(--card); border: 1px solid var(--line); color: var(--muted); }
+.chip.good { color: var(--good); }
+.chip.warn { color: var(--warn); }
+.chip.bad { color: var(--bad); border-color: var(--bad); }
+
+nav { display: flex; gap: 4px; margin-top: 18px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+nav button {
+  background: none; border: none; border-bottom: 2px solid transparent; border-radius: 0;
+  padding: 10px 12px; color: var(--muted); font-weight: 600; white-space: nowrap;
+}
+nav button.active { color: var(--text); border-bottom-color: var(--accent); }
+
+main { padding-top: 16px; padding-bottom: 40px; }
+.tab { display: none; }
+.tab.active { display: block; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+
+label { display: block; font-size: 13px; color: var(--muted); margin: 10px 0 4px; }
+label.check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 14px; margin-top: 14px; }
+input[type=text], input[type=number], input[type=date], input[type=datetime-local], input[type=time], select, textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--text); font: inherit;
+}
+textarea { resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; }
+#text, #schedText, #phrases, #trainStations, #numbers { text-transform: uppercase; }
+input[type=range] { width: 100%; accent-color: var(--accent); }
+.row { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0 14px; }
+.hint { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+
+button {
+  font: inherit; font-size: 14px; padding: 8px 14px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--card); color: var(--text);
+}
+button:hover { border-color: var(--muted); }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); font-weight: 600; }
+button.danger { color: var(--bad); border-color: var(--bad); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
+.card > .actions:first-child { margin-top: 0; margin-bottom: 12px; }
+.status { font-size: 13px; color: var(--muted); }
+.status.bad { color: var(--bad); }
+.status.good { color: var(--good); }
+
+.segmented { display: flex; flex-wrap: wrap; gap: 6px; }
+.segmented button.active { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+.segmented.small button { padding: 6px 12px; }
+.mode-panel { display: none; margin-top: 6px; }
+.mode-panel.active { display: block; }
+
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 12px; color: var(--muted); font-weight: 600; }
+td.good { color: var(--good); }
+td.warn { color: var(--warn); }
+td.bad { color: var(--bad); font-weight: 600; }
+td button { padding: 4px 10px; font-size: 13px; }
+
+.list { list-style: none; margin: 0; padding: 0; }
+.list li { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.list li:last-child { border-bottom: none; }
+.list .when { color: var(--muted); font-size: 13px; }
+.empty { color: var(--muted); }
+
+.terminal {
+  background: var(--term); color: var(--term-text); border-radius: 8px; padding: 12px;
+  font: 13px/1.4 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  height: 420px; overflow: auto; white-space: pre-wrap; word-break: break-word; margin: 0;
+}
+.terminal.small { height: 300px; font-size: 12px; }
+.console-input { display: flex; gap: 8px; align-items: center; margin-top: 8px; }
+.console-input span { font-family: ui-monospace, Menlo, monospace; color: var(--muted); }
+.console-input input { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; font-size: 14px; }
+.facts dt { color: var(--muted); }
+.facts dd { margin: 0; }
+
+@media (max-width: 560px) {
+  .board { gap: 3px; }
+  .terminal { height: 360px; }
+}

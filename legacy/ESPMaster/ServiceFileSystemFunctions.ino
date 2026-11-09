@@ -1,0 +1,100 @@
+//Initialize LittleFS
+void initialiseFileSystem() {
+  if (!LittleFS.begin()) {
+    SerialPrintln("An error has occurred while mounting LittleFS");
+  }
+
+  SerialPrintln("LittleFS mounted successfully");
+}
+
+//Load variables that are saved to the file system
+void loadValuesFromFileSystem() {
+  //Load values saved in LittleFS
+  countdownToDateUnix = readFile(LittleFS, countdownPath, "0");
+  alignment = readFile(LittleFS, alignmentPath, ALIGNMENT_MODE_LEFT);
+  flapSpeed = readFile(LittleFS, flapSpeedPath, "80");
+  deviceMode = readFile(LittleFS, deviceModePath, DEVICE_MODE_TEXT);
+  trainStationDelaySeconds = readFile(LittleFS, trainStationDelayPath, "30");
+  trainStationType = readFile(LittleFS, trainStationTypePath, "random");
+  trainStationLine = readFile(LittleFS, trainStationLinePath, "");
+  randomPhraseList = readFile(LittleFS, randomPhraseListPath, "");
+  randomPhraseMinDelaySeconds = readFile(LittleFS, randomPhraseMinDelayPath, "10");
+  randomPhraseMaxDelaySeconds = readFile(LittleFS, randomPhraseMaxDelayPath, "60");
+  famousNumbersMinDelaySeconds = readFile(LittleFS, famousNumbersMinDelayPath, "10");
+  famousNumbersMaxDelaySeconds = readFile(LittleFS, famousNumbersMaxDelayPath, "60");
+  famousNumbersNameDelaySeconds = readFile(LittleFS, famousNumbersNameDelayPath, "5");
+  famousNumbersList = readFile(LittleFS, famousNumbersListPath, "");
+  trainStationRandomList = readFile(LittleFS, trainStationRandomListPath, "");
+  quietHoursEnabled = readFile(LittleFS, quietHoursEnabledPath, "false");
+  quietHoursFrom = readFile(LittleFS, quietHoursFromPath, "22:00");
+  quietHoursTo = readFile(LittleFS, quietHoursToPath, "08:00");
+  
+  // Load clock format (default to 24-hour based on CLOCK_FORMAT_24H flag)
+  String defaultClockFormat = CLOCK_FORMAT_24H ? "true" : "false";
+  clockFormat24Hour = readFile(LittleFS, clockFormat24HourPath, defaultClockFormat);
+
+  String scheduledMessagesJson = readFile(LittleFS, scheduledMessagesPath, "");
+  if (scheduledMessagesJson != "") {    
+    SerialPrintln("Loading Scheduled Messages");
+    readScheduledMessagesFromJson(scheduledMessagesJson);
+  }
+  
+  SerialPrintln("Loaded Settings:");
+  SerialPrintln("   Alignment: " + alignment);
+  SerialPrintln("   Flap Speed: " + flapSpeed);
+  SerialPrintln("   Device Mode: " + deviceMode);
+  SerialPrintln("   Countdown to Date UNIX: " + countdownToDateUnix);
+  SerialPrintln("   Train Station Delay: " + trainStationDelaySeconds + " seconds");
+  SerialPrintln("   Train Station Type: " + trainStationType);
+  SerialPrintln("   Train Station Line: " + trainStationLine);
+  SerialPrintln("   Random Phrase List: " + String(randomPhraseList.length()) + " characters");
+  SerialPrintln("   Random Phrase Min Delay: " + randomPhraseMinDelaySeconds + " seconds");
+  SerialPrintln("   Random Phrase Max Delay: " + randomPhraseMaxDelaySeconds + " seconds");
+  SerialPrintln("   Clock Format: " + String(clockFormat24Hour == "true" ? "24-hour" : "12-hour"));
+  SerialPrint("   Scheduled Message Count: ");
+  SerialPrintln(scheduledMessages.size());
+}
+
+//Read File from LittleFS
+String readFile(fs::FS &fs, const char * path, String defaultValue) {
+  SerialPrintf("Reading file: %s\r\n", path);
+
+  File file = fs.open(path, "r");
+  if (!file || file.isDirectory()) {
+    SerialPrintln("- Failed to open file for reading");
+
+    if (defaultValue.length() > 0) {
+      SerialPrintln("- Writing a default value as one has been specified. Default: " + defaultValue);
+      writeFile(LittleFS, path, defaultValue.c_str());
+      
+      return defaultValue;
+    }
+    
+    return String();
+  }
+
+  String fileContent;
+  while (file.available()) {
+    fileContent = file.readStringUntil('\n');
+    break;
+  }
+  return fileContent;
+}
+
+//Write file to LittleFS
+void writeFile(fs::FS &fs, const char * path, const char * message) {
+  SerialPrintf("Writing file: %s\r\n", path);
+
+  File file = fs.open(path, "w");
+  if (!file) {
+    SerialPrintln("- Failed to open file for writing");
+    return;
+  }
+  
+  if (file.print(message)) {
+    SerialPrintln("- File written");
+  } 
+  else {
+    SerialPrintln("- Write failed");
+  }
+}

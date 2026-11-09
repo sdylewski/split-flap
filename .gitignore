@@ -1,0 +1,6 @@
+legacy/ESPMaster/secrets.h
+.DS_Store
+legacy/Unit/build/
+legacy/ESPMaster/build/
+firmware/master/src/secrets.h
+.pio/
