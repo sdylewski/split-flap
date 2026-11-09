@@ -144,7 +144,11 @@ td button { padding: 4px 10px; font-size: 13px; }
 }
 
 #popupTable input[type=number] { width: 72px; padding: 5px 6px; }
-#popupTable input[type=time] { width: 104px; padding: 5px 6px; }
+#popupTable input[type=time] { width: 88px; padding: 4px 4px; font-size: 13px; }
+#popupTable td.hours { white-space: nowrap; }
+#popupTable td.hours .window { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+#popupTable td.hours .window[hidden] { display: none; }
+#popupTable .dash { color: var(--muted); }
 #popupTable select { width: auto; padding: 5px 6px; }
 #popupTable td.days { white-space: nowrap; }
 label.day { display: inline-flex; flex-direction: column; align-items: center; font-size: 11px; margin: 0 1px; color: var(--muted); }

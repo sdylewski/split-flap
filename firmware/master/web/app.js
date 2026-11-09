@@ -351,6 +351,27 @@ const SOURCE_NAMES = {
 const EVENT_ONLY = ["notify", "scheduled"];
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
+// Hours a timer pop-up may run: "All day" (from/to empty), or a from-to window
+function hoursCell(r) {
+  const allDay = !r.from || !r.to || r.from === r.to;
+  return `<label class="inline"><input type="checkbox" data-k="allDay" ${allDay ? "checked" : ""}> All day</label>` +
+    `<span class="window"${allDay ? " hidden" : ""}><input type="time" data-k="from" value="${allDay ? "" : r.from}">` +
+    `<span class="dash">-</span><input type="time" data-k="to" value="${allDay ? "" : r.to}"></span>`;
+}
+
+// Unticking "All day": start from the hours outside quiet hours (e.g. 07:00 - 22:00)
+$("popupTable").addEventListener("change", (event) => {
+  if (event.target.dataset.k !== "allDay") return;
+  const cell = event.target.closest("td");
+  cell.querySelector(".window").hidden = event.target.checked;
+  if (!event.target.checked) {
+    const from = cell.querySelector('[data-k="from"]');
+    const to = cell.querySelector('[data-k="to"]');
+    if (!from.value) from.value = (settings && settings.quietTo) || "07:00";
+    if (!to.value) to.value = (settings && settings.quietFrom) || "22:00";
+  }
+});
+
 function renderPopups(sources) {
   const rows = Object.entries(SOURCE_NAMES).map(([id, label]) => {
     const r = sources[id] || {};
@@ -366,8 +387,7 @@ function renderPopups(sources) {
       `<td><select data-k="priority">${priorities}</select></td>` +
       `<td><input type="number" data-k="showSeconds" min="3" max="7200" value="${r.showSeconds || 60}"></td>` +
       `<td>${timer ? `<input type="number" data-k="everyMinutes" min="0" max="1440" value="${r.everyMinutes || 0}">` : "event"}</td>` +
-      `<td>${timer ? `<input type="time" data-k="from" value="${r.from || ""}">` : ""}</td>` +
-      `<td>${timer ? `<input type="time" data-k="to" value="${r.to || ""}">` : ""}</td>` +
+      `<td class="hours">${timer ? hoursCell(r) : ""}</td>` +
       `<td class="days">${timer ? days : ""}</td><td>${extra}</td></tr>`;
   });
   $("popupTable").querySelector("tbody").innerHTML = rows.join("");
@@ -379,7 +399,11 @@ $("btnPopups").addEventListener("click", () => {
     const get = (k) => tr.querySelector(`[data-k="${k}"]`);
     const r = { enabled: get("enabled").checked, priority: get("priority").value, showSeconds: Number(get("showSeconds").value) };
     if (get("everyMinutes")) r.everyMinutes = Number(get("everyMinutes").value);
-    if (get("from")) { r.from = get("from").value; r.to = get("to").value; }
+    if (get("allDay")) {
+      const allDay = get("allDay").checked || !get("from").value || !get("to").value;
+      r.from = allDay ? "" : get("from").value;
+      r.to = allDay ? "" : get("to").value;
+    }
     const dayBoxes = tr.querySelectorAll("[data-day]");
     if (dayBoxes.length) r.days = Array.from(dayBoxes).reduce((m, b) => m | (b.checked ? 1 << Number(b.dataset.day) : 0), 0);
     if (get("trainMinutes")) r.trainMinutes = Number(get("trainMinutes").value);
