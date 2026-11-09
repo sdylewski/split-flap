@@ -141,7 +141,10 @@ function fillForm(s) {
   $("phrases").value = s.phrases;
   $("phraseMinSeconds").value = s.phraseMinSeconds;
   $("phraseMaxSeconds").value = s.phraseMaxSeconds;
-  renderNumbers(parseNumbers(s.numbers));
+  if (!numberSaveTimer) {  // don't throw away an edit that is about to be saved
+    numberLists = Object.assign({}, s.numberLists || {});
+    loadNumberList(s.numberList || "General");
+  }
   $("numberMinSeconds").value = s.numberMinSeconds;
   $("numberMaxSeconds").value = s.numberMaxSeconds;
   $("numberNameSeconds").value = s.numberNameSeconds;
@@ -318,24 +321,79 @@ function numbersFromTable() {
     .join(",");
 }
 
+// Lists: the built-in presets, plus the user's edited versions kept on the device
+// (settings.numberLists, only for lists that differ from their preset). "random" is a random mix
+// that is saved as soon as it's drawn, so it stays the same until "Reset" draws a new one.
+let numberLists = {};
+let currentList = "General";
+let numberSaveTimer = null;
+
+const pairsText = (pairs) => pairs.map(([number, name]) => `${number},${name}`).join(",");
+
+function randomPairs() {
+  const seen = new Set();
+  const all = Object.values(NUMBER_PRESETS).flat().filter(([, name]) => !seen.has(name) && seen.add(name));
+  for (let i = all.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [all[i], all[j]] = [all[j], all[i]];
+  }
+  return all.slice(0, 15);
+}
+
+function updateNumberReset() {
+  $("btnNumberReset").hidden = !(currentList in numberLists);
+  $("btnNumberReset").textContent = currentList === "random" ? "Draw a new random mix" : "Reset to default";
+}
+
+function saveNumberLists() {
+  clearTimeout(numberSaveTimer);
+  numberSaveTimer = null;
+  return api("/api/settings", { body: { numberList: currentList, numberLists } })
+    .then(() => { $("numberSaved").textContent = "saved"; setTimeout(() => { $("numberSaved").textContent = ""; }, 1500); })
+    .catch((e) => { $("numberSaved").textContent = e.message; });
+}
+
+// Called after every edit: remember this list's table, a moment after typing stops
+function numbersEdited() {
+  const text = numbersFromTable();
+  const preset = currentList === "random" ? null : pairsText(NUMBER_PRESETS[currentList] || []);
+  if (preset !== null && text === preset) delete numberLists[currentList];
+  else numberLists[currentList] = text;
+  updateNumberReset();
+  clearTimeout(numberSaveTimer);
+  numberSaveTimer = setTimeout(saveNumberLists, 1200);
+}
+
+function loadNumberList(name) {
+  currentList = name in NUMBER_PRESETS || name === "random" ? name : "General";
+  $("numberPreset").value = currentList;
+  if (currentList in numberLists) {
+    renderNumbers(parseNumbers(numberLists[currentList]));
+  } else if (currentList === "random") {
+    const pairs = randomPairs();
+    renderNumbers(pairs);
+    numberLists.random = pairsText(pairs);
+    saveNumberLists();
+  } else {
+    renderNumbers(NUMBER_PRESETS[currentList]);
+  }
+  updateNumberReset();
+}
+
 $("numberPreset").innerHTML = Object.keys(NUMBER_PRESETS).map((k) => `<option>${k}</option>`).join("") +
   '<option value="random">Random mix (15 from all lists)</option>';
-$("btnNumberPreset").addEventListener("click", () => {
-  const choice = $("numberPreset").value;
-  let pairs;
-  if (choice === "random") {
-    const seen = new Set();
-    const all = Object.values(NUMBER_PRESETS).flat().filter(([, name]) => !seen.has(name) && seen.add(name));
-    for (let i = all.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [all[i], all[j]] = [all[j], all[i]];
-    }
-    pairs = all.slice(0, 15);
-  } else {
-    pairs = NUMBER_PRESETS[choice];
-  }
-  renderNumbers(pairs);
+$("numberPreset").addEventListener("change", async () => {
+  if (numberSaveTimer) await saveNumberLists();  // keep edits to the list we're leaving
+  loadNumberList($("numberPreset").value);
+  if (!numberSaveTimer) saveNumberLists();       // remember which list is picked
 });
+$("btnNumberReset").addEventListener("click", () => {
+  delete numberLists[currentList];
+  loadNumberList(currentList);  // random: draws a new mix
+  saveNumberLists();
+});
+$("numberTable").addEventListener("input", numbersEdited);
+$("numberTable").addEventListener("click", (event) => { if (event.target.tagName === "BUTTON") numbersEdited(); });
 $("btnAddNumber").addEventListener("click", () => {
   const row = numberRow();
   $("numberTable").querySelector("tbody").appendChild(row);

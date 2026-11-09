@@ -77,6 +77,9 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["phraseMinSeconds"] = s.phraseMinSeconds;
   o["phraseMaxSeconds"] = s.phraseMaxSeconds;
   o["numbers"] = s.numbers;
+  o["numberList"] = s.numberList;
+  JsonObject lists = o["numberLists"].to<JsonObject>();
+  for (const auto& list : s.numberLists) lists[list.first] = list.second;
   o["numberMinSeconds"] = s.numberMinSeconds;
   o["numberMaxSeconds"] = s.numberMaxSeconds;
   o["numberNameSeconds"] = s.numberNameSeconds;
@@ -226,7 +229,7 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeString(p, "phrases", s.phrases, 3000, error) &&
             takeInt(p, "phraseMinSeconds", s.phraseMinSeconds, 5, 3600, error) &&
             takeInt(p, "phraseMaxSeconds", s.phraseMaxSeconds, 5, 3600, error) &&
-            takeString(p, "numbers", s.numbers, 3000, error) &&
+            takeString(p, "numbers", s.numbers, 3000, error) && takeString(p, "numberList", s.numberList, 40, error) &&
             takeInt(p, "numberMinSeconds", s.numberMinSeconds, 5, 3600, error) &&
             takeInt(p, "numberMaxSeconds", s.numberMaxSeconds, 5, 3600, error) &&
             takeInt(p, "numberNameSeconds", s.numberNameSeconds, 1, 60, error) &&
@@ -264,6 +267,21 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   s.bartDirection.toLowerCase();
   if (s.bartStation.length() != 4) return error = "bartStation must be a 4-letter station code (e.g. MONT)", false;
   if (!oneOf(s.bartDirection, {"", "n", "s"})) return error = "bartDirection must be empty, n or s", false;
+
+  JsonVariantConst numberLists = p["numberLists"];
+  if (!numberLists.isNull()) {
+    if (!numberLists.is<JsonObjectConst>()) return error = "numberLists must be an object", false;
+    s.numberLists.clear();
+    for (JsonPairConst kv : numberLists.as<JsonObjectConst>()) {
+      String name = kv.key().c_str();
+      String text = kv.value() | "";
+      if (name.length() == 0 || name.length() > 40 || text.length() > 1500) {
+        return error = "numberLists: names up to 40 characters, lists up to 1500", false;
+      }
+      if (s.numberLists.size() >= 12) return error = "numberLists: at most 12 edited lists", false;
+      s.numberLists.push_back({name, text});
+    }
+  }
 
   JsonVariantConst sourceList = p["sources"];
   if (!sourceList.isNull()) {

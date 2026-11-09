@@ -86,6 +86,10 @@ struct Settings {
 
   // Famous numbers mode
   String numbers = "";          // "3.14159,PI,2.71828,EULER E" (number,name pairs); empty = built-in
+  // Web editor state (doesn't change the display): the list picked in the Numbers panel and the
+  // user's edited versions of the preset lists ("Quantum mechanics" -> "6.626 E-34,PLANCK H,...")
+  String numberList = "General";
+  std::vector<std::pair<String, String>> numberLists;
   int numberMinSeconds = 10;
   int numberMaxSeconds = 60;
   int numberNameSeconds = 5;

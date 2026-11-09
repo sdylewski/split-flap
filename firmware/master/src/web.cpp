@@ -59,7 +59,17 @@ static void applySettingsPatch(AsyncWebServerRequest* request, JsonVariant& json
       return;
     }
     bool timezoneChanged = updated.timezone != before.timezone;
+    // Editor state only (the Numbers panel autosaves its lists): save, but don't restart the
+    // mode - in famous-numbers mode a restart would flip to a new number on every keystroke pause
+    bool editorOnly = true;
+    for (JsonPairConst kv : doc.as<JsonObjectConst>()) {
+      if (kv.key() != "numberList" && kv.key() != "numberLists") editorOnly = false;
+    }
     settings::commit(updated);
+    if (editorOnly) {
+      LOGD("web", "numbers editor saved");
+      return;
+    }
     if (timezoneChanged) net::setTimezone(updated.timezone);
     app::displayPaused = false;
     modes::restart();
