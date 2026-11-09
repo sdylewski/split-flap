@@ -262,8 +262,21 @@ void loop() {
   if (quiet != inQuiet) {
     inQuiet = quiet;
     LOGI("modes", quiet ? "quiet hours started (until %s)" : "quiet hours ended", s.quietTo.c_str());
-    if (quiet && s.quietBlank) display::show("", true);
-    if (!quiet) restart();
+    if (quiet) {
+      if (s.quietBlank) display::show("", true);
+      if (s.quietPowerSave) {
+        app::lowPower = true;
+        net::setPowerSave(true);
+        units::sleepAll();  // only 2.3+ units; the coils of all units are off when idle anyway
+      }
+    } else {
+      if (app::lowPower) {
+        app::lowPower = false;
+        net::setPowerSave(false);
+      }
+      if (s.quietRehome) units::rehomeAll(unitproto::rpmFromSpeed(s.speed));  // morning check; wakes sleepers
+      restart();
+    }
   }
   if (inQuiet) return;
 

@@ -75,7 +75,10 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["quietTo"] = s.quietTo;
   o["quietBlank"] = s.quietBlank;
   o["logLevel"] = s.logLevel;
+  o["waveStyle"] = s.waveStyle;
   o["waveMs"] = s.waveMs;
+  o["quietPowerSave"] = s.quietPowerSave;
+  o["quietRehome"] = s.quietRehome;
   o["waveOrder"] = s.waveOrder;
   o["weatherLat"] = s.weatherLat;
   o["weatherLon"] = s.weatherLon;
@@ -204,7 +207,9 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeInt(p, "numberNameSeconds", s.numberNameSeconds, 1, 60, error) &&
             takeBool(p, "quietEnabled", s.quietEnabled, error) && takeString(p, "quietFrom", s.quietFrom, 5, error) &&
             takeString(p, "quietTo", s.quietTo, 5, error) && takeBool(p, "quietBlank", s.quietBlank, error) &&
-            takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 1000, error) &&
+            takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 5000, error) &&
+            takeString(p, "waveStyle", s.waveStyle, 12, error) && takeBool(p, "quietPowerSave", s.quietPowerSave, error) &&
+            takeBool(p, "quietRehome", s.quietRehome, error) &&
             takeString(p, "waveOrder", s.waveOrder, 10, error) &&
             takeFloat(p, "weatherLat", s.weatherLat, -90, 90, error) &&
             takeFloat(p, "weatherLon", s.weatherLon, -180, 180, error) &&
@@ -227,6 +232,7 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   logx::Level level;
   if (!logx::parseLevel(s.logLevel, level)) return error = "logLevel must be debug, info, warn, error or off", false;
   if (!oneOf(s.waveOrder, {"left", "right", "center", "random"})) return error = "waveOrder must be left, right, center or random", false;
+  if (!oneOf(s.waveStyle, {"off", "arrive", "start", "sequential"})) return error = "waveStyle must be off, arrive, start or sequential", false;
   s.bartStation.toUpperCase();
   s.bartDirection.toLowerCase();
   if (s.bartStation.length() != 4) return error = "bartStation must be a 4-letter station code (e.g. MONT)", false;

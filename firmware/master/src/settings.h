@@ -61,12 +61,19 @@ struct Settings {
   String quietFrom = "22:00";
   String quietTo = "08:00";
   bool quietBlank = false;      // true = blank the display at the start of quiet hours
+  bool quietPowerSave = true;   // quiet hours: WiFi power save, 80 MHz CPU, units in deep sleep (2.3+)
+  bool quietRehome = true;      // when quiet hours end: every unit re-homes (a full turn) before showing
 
   // Scheduled messages
   std::vector<ScheduledMessage> scheduled;
 
-  // Wave reveal: units start one after another instead of all at once
-  int waveMs = 0;               // ms between units, 0 = off
+  // Wave reveal
+  //   off        all units start together
+  //   arrive     letters LAND waveMs apart: units with further to go start earlier
+  //   start      units START waveMs apart (and land whenever)
+  //   sequential each unit starts waveMs after the previous one has landed
+  String waveStyle = "off";
+  int waveMs = 300;             // spacing between units
   String waveOrder = "left";    // left | right | center | random
 
   // Weather mode (Open-Meteo, no account needed)

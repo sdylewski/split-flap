@@ -13,6 +13,7 @@ namespace app {
 
 bool displayPaused = false;
 bool otaActive = false;
+bool lowPower = false;
 
 static SemaphoreHandle_t lock = nullptr;
 static std::deque<std::function<void()>> jobs;

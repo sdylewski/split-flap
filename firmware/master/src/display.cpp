@@ -63,12 +63,30 @@ static bool pollDue() {
   return true;
 }
 
-// Writing a line: all units at once, or one after another ("wave", settings.waveMs apart)
+// Writing a line. Every unit gets a start time (ms after the line begins):
+//   off        all at 0
+//   start      k * waveMs                         (units start one after another)
+//   arrive     units LAND waveMs apart: start = arrival - travel time, so a unit with a long way
+//              to go starts early and a unit with a short hop starts late
+//   sequential each unit starts waveMs after the previous one landed
+// Travel time = flaps to go x time per flap. The drum only turns forward, so going from 'Z' to
+// 'A' is most of a turn. One flap takes 60 s / (45 flaps x rpm).
+struct Start {
+  int unit;
+  uint32_t at;
+};
 static std::string writeText;
-static std::vector<int> writeOrder;
+static std::vector<Start> writePlan;
 static size_t writeNext = 0;
 static int writeFailed = 0;
 static uint8_t writeRpm = 0;
+
+static uint32_t travelMs(int address, int toLetter, uint8_t rpm) {
+  const units::Unit& u = units::get(address);
+  int from = u.lastLetter >= 0 ? u.lastLetter : (u.infoValid ? u.info.letter : -1);
+  int flaps = from < 0 ? unitproto::FLAP_COUNT / 2 : (toLetter - from + unitproto::FLAP_COUNT) % unitproto::FLAP_COUNT;
+  return (uint32_t)flaps * 60000UL / ((uint32_t)unitproto::FLAP_COUNT * (rpm ? rpm : 1));
+}
 
 static void prepareWrite() {
   const Settings& s = settings::current();
@@ -79,30 +97,62 @@ static void prepareWrite() {
   writeRpm = unitproto::rpmFromSpeed(s.speed);
   writeNext = 0;
   writeFailed = 0;
-  writeOrder.clear();
-  for (int a = 0; a < n; a++) writeOrder.push_back(a);
+
+  // Order the units go in
+  std::vector<int> order;
+  for (int a = 0; a < n; a++) order.push_back(a);
   if (s.waveOrder == "right") {
-    std::reverse(writeOrder.begin(), writeOrder.end());
+    std::reverse(order.begin(), order.end());
   } else if (s.waveOrder == "center") {  // from the middle outwards
-    std::sort(writeOrder.begin(), writeOrder.end(), [n](int x, int y) {
-      return std::abs(2 * x - (n - 1)) < std::abs(2 * y - (n - 1));
-    });
+    std::stable_sort(order.begin(), order.end(),
+                     [n](int x, int y) { return std::abs(2 * x - (n - 1)) < std::abs(2 * y - (n - 1)); });
   } else if (s.waveOrder == "random") {
-    for (int i = n - 1; i > 0; i--) std::swap(writeOrder[i], writeOrder[random(0, i + 1)]);
+    for (int i = n - 1; i > 0; i--) std::swap(order[i], order[random(0, i + 1)]);
   }
+
+  // Start times
+  writePlan.clear();
+  const uint32_t gap = (uint32_t)s.waveMs;
+  if (s.waveStyle == "arrive") {
+    std::vector<int32_t> starts;
+    int32_t earliest = 0;
+    for (size_t k = 0; k < order.size(); k++) {
+      int u = order[k];
+      int32_t start = (int32_t)(k * gap) - (int32_t)travelMs(u, unitproto::letterIndex(writeText[u]), writeRpm);
+      starts.push_back(start);
+      if (start < earliest) earliest = start;
+    }
+    for (size_t k = 0; k < order.size(); k++) writePlan.push_back({order[k], (uint32_t)(starts[k] - earliest)});
+  } else if (s.waveStyle == "sequential") {
+    uint32_t t = 0;
+    for (int u : order) {
+      writePlan.push_back({u, t});
+      uint32_t travel = travelMs(u, unitproto::letterIndex(writeText[u]), writeRpm);
+      if (travel > 0) t += travel + gap;  // units that don't move don't take a turn
+    }
+  } else if (s.waveStyle == "start") {
+    for (size_t k = 0; k < order.size(); k++) writePlan.push_back({order[k], (uint32_t)(k * gap)});
+  } else {
+    for (int u : order) writePlan.push_back({u, 0});
+  }
+  std::stable_sort(writePlan.begin(), writePlan.end(), [](const Start& x, const Start& y) { return x.at < y.at; });
+
   if (lines.size() > 1) {
     LOGD("display", "line %u/%u \"%s\"", (unsigned)index + 1, (unsigned)lines.size(), writeText.c_str());
+  }
+  if (s.waveStyle != "off") {
+    LOGD("display", "wave %s, %s, %d ms: last unit starts at +%lu ms", s.waveStyle.c_str(), s.waveOrder.c_str(),
+         s.waveMs, (unsigned long)writePlan.back().at);
   }
 }
 
 // Returns true when every unit has been written
 static bool writeStep(uint32_t sinceStart) {
-  uint32_t wave = (uint32_t)settings::current().waveMs;
-  while (writeNext < writeOrder.size() && sinceStart >= writeNext * wave) {
-    int a = writeOrder[writeNext++];
+  while (writeNext < writePlan.size() && sinceStart >= writePlan[writeNext].at) {
+    int a = writePlan[writeNext++].unit;
     if (!units::writeLetter(a, unitproto::letterIndex(writeText[a]), writeRpm)) writeFailed++;
   }
-  if (writeNext < writeOrder.size()) return false;
+  if (writeNext < writePlan.size()) return false;
   lastWrite = millis();
   onFlaps = writeText.c_str();
   if (writeFailed > 0) LOGW("display", "%d unit(s) did not take the update", writeFailed);

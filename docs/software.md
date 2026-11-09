@@ -87,6 +87,8 @@ rejected with a message saying what's wrong. The main keys:
 | `timezone` | `PST8PDT,M3.2.0,M11.1.0` | POSIX TZ string (the web UI has a list) |
 | `clock24h` / `dateFormat` | false / `%a %b %d` | Clock and date format (strftime) |
 | `quietEnabled` `quietFrom` `quietTo` `quietBlank` | off, 22:00, 08:00 | No display changes during these hours |
+| `quietPowerSave` | true | During quiet hours: WiFi modem sleep, CPU at 80 MHz, no unit polling, units (2.3+) in deep sleep |
+| `quietRehome` | true | When quiet hours end, every unit re-homes (a full turn) before the mode resumes |
 | `waveMs` / `waveOrder` | 0 / `left` | Wave reveal: ms between units (0 = off), `left` `right` `center` `random` |
 | weather, BART, printers | | See [integrations.md](./integrations.md) |
 | `logLevel` | `info` | Serial log level: `debug` `info` `warn` `error` `off` |
@@ -140,6 +142,8 @@ watchdog resets, so that build leaves it off.
   syncs/errors/misses, I2C traffic, and an event log the master pulls into its own log.
 - Resets its own I2C hardware if it ever gets stuck mid-transfer (the 1.3.0 firmware could
   lock the whole bus).
+- Switches the motor coils off 100 ms after every move (`holdMs`): an energized 28BYJ-48 draws
+  about 200 mA. During quiet hours (2.3+) the CPU goes into deep sleep until the master wakes it.
 - Keeps its tuning (speed limits, timings, sensor polarity, direction, LED, ...) as
   **parameters in EEPROM** (2.1+), changed from the console with `param` - no reflashing.
   See [console.md](./console.md#unit-parameters-param).

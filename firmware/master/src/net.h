@@ -12,6 +12,8 @@ bool connected();
 bool timeValid();               // NTP has set the clock
 bool localTime(struct tm& out); // false if the time isn't known yet
 void setTimezone(const String& posixTz);
+// Night: WiFi modem sleep + 80 MHz CPU (slower replies, much less power). Day: full speed.
+void setPowerSave(bool on);
 
 // Diagnostics
 int rssi();

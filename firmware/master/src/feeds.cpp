@@ -344,6 +344,14 @@ static void task(void*) {
     // Fetch right away when the location / station changes, then on a timer
     String wk = String(s.weatherLat, 4) + String(s.weatherLon, 4) + (s.weatherFahrenheit ? "F" : "C");
     uint32_t weatherEvery = weather().valid && weather().error.length() == 0 ? 600000 : 30000;  // retry errors sooner
+    if (app::lowPower) {
+      // Quiet hours: the display is frozen - only keep an eye on the printers, and less often
+      if (!s.printers.empty() && now - lastPrinters > 60000) {
+        lastPrinters = now;
+        fetchPrinters(s);
+      }
+      continue;
+    }
     if (s.mode == "weather" && (wk != weatherKey || lastWeather == 0 || now - lastWeather > weatherEvery)) {
       weatherKey = wk;
       lastWeather = now;

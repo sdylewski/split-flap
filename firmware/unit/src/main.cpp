@@ -1,5 +1,6 @@
-// Split-flap display - flap unit firmware 2.2.0 (Arduino Nano / ATmega328P)
+// Split-flap display - flap unit firmware 2.3.0 (Arduino Nano / ATmega328P)
 //
+// 2.3.0: deep sleep for quiet hours (CMD_SLEEP): the CPU powers down until the next command.
 // 2.2.0: no false "magnet missed" when a move ends a few steps before the magnet (units with a
 //        small offset showing the last flap): the hall state is kept between moves.
 // 2.1.0: learns its motor's steps per turn (2038 or 2048 depending on the 28BYJ-48's gearing) from
@@ -34,7 +35,7 @@
 
 using namespace unitproto;
 
-#define FIRMWARE_VERSION 22  // 2.2.0
+#define FIRMWARE_VERSION 23  // 2.3.0
 #define SERIAL_BAUD 115200
 
 // ---- Pins ----------------------------------------------------------------------------------
@@ -122,6 +123,7 @@ static volatile uint8_t replyParam = 0;
 static volatile uint16_t i2cWrites = 0;
 static volatile uint32_t lastI2cMs = 0;
 static volatile bool stopJog = false;   // CMD_STOP takes effect immediately, even mid-move
+static volatile bool sleepWanted = false;  // CMD_SLEEP: power down whenever idle, until a real command
 
 // ---- Helpers -------------------------------------------------------------------------------
 static void logEvent(uint8_t code, int16_t arg) {
@@ -463,6 +465,11 @@ static void onReceive(int /*count*/) {
     replyParam = n >= 2 ? rxBuf[1] : 0xFF;
     return;
   }
+  if (first == CMD_SLEEP) {
+    sleepWanted = true;
+    return;
+  }
+  sleepWanted = false;  // any other command wakes it for good (status reads don't come through here)
   if (first == CMD_STOP) stopJog = true;
   // Report "busy" right away so the master never sees a stale "ready" for a move that's queued
   if (first < FLAP_COUNT || first == CMD_HOME || first == CMD_MOVE || first == CMD_REHOME) {
@@ -662,7 +669,7 @@ static void handleCommand() {
 // ---- Serial bench console ------------------------------------------------------------------
 static void printInfo() {
   Serial.print(F("unit ")); Serial.print(address);
-  Serial.print(F(" fw 2.2.0  status ")); Serial.print(status);
+  Serial.print(F(" fw 2.3.0  status ")); Serial.print(status);
   Serial.print(F("  letter '")); Serial.print(LETTERS[letter]);
   Serial.print(F("'  position ")); Serial.print(position);
   Serial.print(homed ? F(" (homed)") : F(" (NOT homed)"));
@@ -739,6 +746,31 @@ static void serialTask() {
   }
 }
 
+// Power-down until an I2C address match wakes us (the TWI hardware stretches the clock until
+// we're up - about 1 ms). Coils are already off; the ADC and watchdog are paused too.
+// millis() stops while asleep, so "uptime" only counts awake time during quiet hours.
+static void deepSleep() {
+  Serial.flush();
+  uint8_t adc = ADCSRA;
+  ADCSRA &= ~_BV(ADEN);
+#if WATCHDOG_ENABLE
+  wdt_disable();
+#endif
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  cli();
+  if (sleepWanted && !rxReady) {
+    sleep_enable();
+    sei();
+    sleep_cpu();  // ... an I2C transfer for our address wakes us here
+    sleep_disable();
+  }
+  sei();
+  ADCSRA = adc;
+#if WATCHDOG_ENABLE
+  wdt_enable(WDTO_2S);
+#endif
+}
+
 // ---- Setup / loop --------------------------------------------------------------------------
 #if OPTIBOOT
 // Optiboot clears MCUSR but passes its old value in r2. Grab it before anything else runs.
@@ -779,7 +811,7 @@ void setup() {
   setSpeed(param(P_HOME_RPM));
   startI2c();
 
-  Serial.print(F("\nsplit-flap unit 2.2.0, I2C address "));
+  Serial.print(F("\nsplit-flap unit 2.3.0, I2C address "));
   Serial.print(address);
   Serial.print(F(", offset "));
   Serial.print(offset);
@@ -829,6 +861,12 @@ void loop() {
   }
 
   serialTask();
+
+  // Quiet hours: deep sleep once the motor is idle and the coils are off
+  if (sleepWanted && motion == Motion::Idle && !coilsOn && !rxReady && !letterPending && !calMode) {
+    deepSleep();
+    return;
+  }
 
   // Nothing to do: idle sleep until the next interrupt (timer tick or I2C). millis() keeps running.
   if (motion == Motion::Idle && !rxReady && !letterPending) {

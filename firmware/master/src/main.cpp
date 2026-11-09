@@ -67,14 +67,15 @@ static void housekeeping() {
   static uint32_t lastState = 0, lastPoll = 0, lastInfo = 0;
   uint32_t now = millis();
 
-  // Keep unit status fresh while nothing is moving (display.cpp polls while it is)
-  if (display::idle() && !app::displayPaused && now - lastPoll > 2000) {
+  // Keep unit status fresh while nothing is moving (display.cpp polls while it is).
+  // Not in low-power mode: polling would wake units from deep sleep.
+  if (display::idle() && !app::displayPaused && !app::lowPower && now - lastPoll > 2000) {
     lastPoll = now;
     units::pollAll(true);
   }
 
   // v2 units: diagnostics + event log every 15 s, only while the display is idle
-  if (display::idle() && now - lastInfo > 15000) {
+  if (display::idle() && !app::lowPower && now - lastInfo > 15000) {
     lastInfo = now;
     for (int a = 0; a < units::count(); a++) {
       units::Unit& u = units::get(a);
@@ -89,7 +90,7 @@ static void housekeeping() {
     display::redraw();
   }
 
-  if (now - lastState > 500) {
+  if (now - lastState > (app::lowPower ? 5000UL : 1000UL)) {
     lastState = now;
     app::publishState(web::buildState());
     if (!app::otaActive && net::connected() && net::timeValid()) {

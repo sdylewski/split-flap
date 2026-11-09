@@ -111,6 +111,13 @@ static void connectBest() {
 
 static void startWifi() { startScan(false); }
 
+void setPowerSave(bool on) {
+  WiFi.setSleep(on ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);
+  setCpuFrequencyMhz(on ? 80 : 240);
+  LOGI("power", "%s: WiFi %s, CPU %d MHz", on ? "power saving" : "full speed", on ? "modem sleep" : "always on",
+       (int)getCpuFrequencyMhz());
+}
+
 void setTimezone(const String& posixTz) {
   configTzTime(posixTz.c_str(), NTP_SERVER1, NTP_SERVER2);
   LOGI("time", "time zone %s", posixTz.c_str());

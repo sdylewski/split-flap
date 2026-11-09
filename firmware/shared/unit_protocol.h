@@ -55,7 +55,11 @@ constexpr uint8_t CMD_GET_PARAM = 0xFB;
 constexpr uint8_t CMD_SET_PARAM = 0xFC;
 constexpr uint8_t CMD_RESET_PARAMS = 0xFD;
 constexpr uint8_t PARAM_REPLY_SIZE = 4;
-// 0xFE-0xFF reserved (e.g. a future "enter I2C bootloader" command)
+// Deep sleep (2.3.0+): [CMD_SLEEP] - power-down until the next command (any letter / re-home wakes
+// it; status reads don't). Used for quiet hours: the coils are off anyway, this also stops the CPU.
+constexpr uint8_t CMD_SLEEP = 0xFE;
+constexpr uint8_t SLEEP_FIRMWARE = 23;
+// 0xFF reserved (e.g. a future "enter I2C bootloader" command)
 constexpr uint8_t V2_FIRMWARE = 20;   // 2.0.0
 constexpr uint8_t V21_FIRMWARE = 21;  // 2.1.0: learned steps per turn (Info.stepsPerRev)
 

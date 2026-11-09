@@ -149,8 +149,11 @@ function fillForm(s) {
   $("printerNotify").checked = s.printerNotify;
   $("printerNotifySeconds").value = s.printerNotifySeconds;
   // Wave
-  $("waveOrder").value = s.waveMs > 0 ? s.waveOrder : "off";
-  $("waveMs").value = s.waveMs > 0 ? s.waveMs : 150;
+  $("waveStyle").value = s.waveStyle;
+  $("waveOrder").value = s.waveOrder;
+  $("waveMs").value = s.waveMs;
+  $("quietPowerSave").checked = s.quietPowerSave;
+  $("quietRehome").checked = s.quietRehome;
   $("waveMsValue").textContent = `${$("waveMs").value} ms`;
   const known = TIMEZONES.find(([name, tz]) => tz === s.timezone);
   $("timezoneName").value = known ? known[1] : "custom";
@@ -178,9 +181,8 @@ $("text").addEventListener("input", () => {
 // ---- Display tab: apply --------------------------------------------------------------------
 $("btnApply").addEventListener("click", () => {
   const n = (id) => Number($(id).value);
-  const wave = $("waveOrder").value;
   const patch = { mode: selectedMode, alignment: selectedAlign, speed: n("speed"), lineSeconds: n("lineSeconds"),
-    waveMs: wave === "off" ? 0 : n("waveMs"), waveOrder: wave === "off" ? "left" : wave };
+    waveStyle: $("waveStyle").value, waveOrder: $("waveOrder").value, waveMs: n("waveMs") };
   switch (selectedMode) {
     case "text": patch.text = $("text").value.toUpperCase(); break;
     case "clock": patch.clock24h = $("clock24h").checked; break;
@@ -320,7 +322,8 @@ $("btnSchedule").addEventListener("click", async () => {
 
 $("btnQuiet").addEventListener("click", () => save({
   quietEnabled: $("quietEnabled").checked, quietFrom: $("quietFrom").value, quietTo: $("quietTo").value,
-  quietBlank: $("quietBlank").checked,
+  quietBlank: $("quietBlank").checked, quietPowerSave: $("quietPowerSave").checked,
+  quietRehome: $("quietRehome").checked,
 }, $("quietStatus")));
 
 // ---- System tab ----------------------------------------------------------------------------
@@ -507,8 +510,10 @@ $("consoleLine").addEventListener("keydown", (event) => {
 $$("[data-console]").forEach((b) => b.addEventListener("click", () => consoleSend(b.dataset.console)));
 
 // ---- Start ---------------------------------------------------------------------------------
+// Poll gently: every 5 s, and not at all while the tab is hidden (lets the ESP32 save power)
 loadSettings();
 pollState();
-setInterval(pollState, 1000);
-setInterval(pollLog, 2000);
+setInterval(() => { if (!document.hidden) pollState(); }, 5000);
+setInterval(() => { if (!document.hidden) pollLog(); }, 3000);
+document.addEventListener("visibilitychange", () => { if (!document.hidden) pollState(); });
 try { showTab(localStorage.getItem("tab") || "display"); } catch (e) { showTab("display"); }

@@ -50,6 +50,10 @@ bool getParam(int address, uint8_t id, uint16_t& value);
 bool setParam(int address, uint8_t id, uint16_t value);
 bool resetParams(int address);
 
+// Quiet hours: put units (2.3+) into deep sleep / wake everyone with a re-home (full turn)
+void sleepAll();
+void rehomeAll(uint8_t rpm);
+
 // Free a stuck bus (a unit holding SDA low). Done at startup and automatically when no unit answers.
 bool recoverBus(const char* why);
 // True once after a unit restarted / reappeared / shows the wrong letter: the display should redraw.

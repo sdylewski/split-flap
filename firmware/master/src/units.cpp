@@ -259,6 +259,26 @@ bool resetParams(int address) {
   return ok;
 }
 
+void sleepAll() {
+  int sent = 0;
+  for (int a = 0; a < count(); a++) {
+    Unit& u = get(a);
+    if (!u.present || u.version == unitproto::VERSION_UNKNOWN || u.version < unitproto::SLEEP_FIRMWARE) continue;
+    uint8_t cmd = unitproto::CMD_SLEEP;
+    if (send(a, &cmd, 1)) sent++;
+  }
+  LOGI("units", "%d unit(s) sent to deep sleep", sent);
+}
+
+void rehomeAll(uint8_t rpm) {
+  for (int a = 0; a < count(); a++) {
+    uint8_t cmd[2] = {unitproto::CMD_REHOME, rpm};
+    if (get(a).isV2()) send(a, cmd, 2);
+    get(a).lastLetter = 0;  // they all end on the blank flap
+  }
+  LOGI("units", "all units re-homing");
+}
+
 bool pollAll(bool idlePoll) {
   bool busy = false;
   int answered = 0;

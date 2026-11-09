@@ -56,9 +56,17 @@ every 15 seconds.
 
 ## Wave reveal
 
-Look card → **Reveal**: instead of all flaps starting at once, they start one after another,
-left to right, right to left, from the center or in random order, `waveMs` apart (try 150 ms).
-It applies to every mode.
+Look card → **Reveal**. It applies to every mode.
+
+| Style (`waveStyle`) | What you see |
+|---|---|
+| `off` | All units start together; each lands whenever its drum gets there |
+| `arrive` | **Letters land one after another, `waveMs` apart.** The master knows each unit's current flap, its target and the speed, so it works out each unit's travel time and starts the far-travelling ones first. Try 300-1000 ms |
+| `start` | Units *start* `waveMs` apart and land whenever |
+| `sequential` | One unit at a time: each starts `waveMs` after the previous one has landed. Slow and theatrical |
+
+`waveOrder` sets the direction: `left` (to right), `right`, `center` (outwards) or `random`.
+The overall speed of the flaps is still `speed`.
 
 ## Messages from anything: the API
 

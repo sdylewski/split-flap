@@ -161,15 +161,21 @@
           <div><label for="lineSeconds">Seconds per line</label><input type="number" id="lineSeconds" min="1" max="60"></div>
         </div>
         <div class="row">
-          <div><label for="waveOrder">Reveal</label>
-            <select id="waveOrder">
+          <div><label for="waveStyle">Reveal</label>
+            <select id="waveStyle">
               <option value="off">All at once</option>
-              <option value="left">Wave, left to right</option>
-              <option value="right">Wave, right to left</option>
-              <option value="center">Wave, from the center</option>
-              <option value="random">Random order</option>
+              <option value="arrive">Wave: letters land one after another</option>
+              <option value="start">Wave: units start one after another</option>
+              <option value="sequential">One at a time</option>
             </select></div>
-          <div><label for="waveMs">Wave delay <span id="waveMsValue"></span></label><input type="range" id="waveMs" min="50" max="600" step="10"></div>
+          <div><label for="waveOrder">Direction</label>
+            <select id="waveOrder">
+              <option value="left">Left to right</option>
+              <option value="right">Right to left</option>
+              <option value="center">From the center</option>
+              <option value="random">Random</option>
+            </select></div>
+          <div><label for="waveMs">Spacing <span id="waveMsValue"></span></label><input type="range" id="waveMs" min="50" max="2000" step="50"></div>
         </div>
       </div>
 
@@ -204,6 +210,8 @@
           <div><label for="quietTo">To</label><input type="time" id="quietTo"></div>
           <div><label class="check"><input type="checkbox" id="quietBlank"> Blank the display first</label></div>
         </div>
+        <label class="check"><input type="checkbox" id="quietPowerSave"> Save power: WiFi power save, slower CPU, units in deep sleep (unit firmware 2.3+)</label>
+        <label class="check"><input type="checkbox" id="quietRehome"> When quiet hours end, re-home every unit (a full turn) before showing</label>
         <div class="actions"><button id="btnQuiet">Save</button><span class="status" id="quietStatus"></span></div>
       </div>
     </section>

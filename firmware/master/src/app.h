@@ -31,6 +31,8 @@ void wait(uint32_t ms);
 extern bool displayPaused;
 // True while an OTA update is being written.
 extern bool otaActive;
+// True during quiet hours with power saving on: slower housekeeping, no unit polling.
+extern bool lowPower;
 
 // Cached JSON for GET /api/state, rebuilt by the main loop (cheap for the web task to copy).
 void publishState(const String& json);
