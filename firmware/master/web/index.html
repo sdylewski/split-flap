@@ -56,7 +56,16 @@
           <p class="hint" id="textHint">Words wrap onto several lines; a new line in the box forces a break.</p>
         </div>
         <div class="mode-panel" data-panel="clock">
-          <label class="check"><input type="checkbox" id="clock24h"> 24-hour clock</label>
+          <div class="row">
+            <div><label class="check"><input type="checkbox" id="clock24h"> 24-hour clock</label></div>
+            <div><label class="check"><input type="checkbox" id="clockLeadingZero"> Leading zeros (06:55)</label></div>
+            <div><label for="clockDay">Day in front</label>
+              <select id="clockDay">
+                <option value="none">None (06:55)</option>
+                <option value="number">Day of the month (05  06:55)</option>
+                <option value="weekday">Weekday (MON  06:55)</option>
+              </select></div>
+          </div>
         </div>
         <div class="mode-panel" data-panel="date">
           <label for="dateFormat">Format</label>
@@ -78,7 +87,7 @@
             <div><label for="trainType">Show</label>
               <select id="trainType">
                 <option value="random">Random stations</option>
-                <option value="line">A train line, in order</option>
+                <option value="line">A metro / train line, in order</option>
                 <option value="bart">A BART line, in order</option>
               </select></div>
             <div><label for="trainLine">Line</label><select id="trainLine"></select></div>

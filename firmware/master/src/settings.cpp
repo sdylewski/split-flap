@@ -65,6 +65,8 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["timezone"] = s.timezone;
   o["timezoneName"] = s.timezoneName;
   o["clock24h"] = s.clock24h;
+  o["clockDay"] = s.clockDay;
+  o["clockLeadingZero"] = s.clockLeadingZero;
   o["dateFormat"] = s.dateFormat;
   o["countdownTo"] = s.countdownTo;
   o["trainType"] = s.trainType;
@@ -215,7 +217,8 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeInt(p, "unitCount", s.unitCount, 1, MAX_UNITS, error) &&
             takeInt(p, "lineSeconds", s.lineSeconds, 1, 60, error) &&
             takeString(p, "timezone", s.timezone, 60, error) && takeString(p, "timezoneName", s.timezoneName, 60, error) &&
-            takeBool(p, "clock24h", s.clock24h, error) && takeString(p, "dateFormat", s.dateFormat, 30, error) &&
+            takeBool(p, "clock24h", s.clock24h, error) && takeString(p, "clockDay", s.clockDay, 10, error) &&
+            takeBool(p, "clockLeadingZero", s.clockLeadingZero, error) && takeString(p, "dateFormat", s.dateFormat, 30, error) &&
             takeInt64(p, "countdownTo", s.countdownTo, error) && takeString(p, "trainType", s.trainType, 10, error) &&
             takeString(p, "trainLine", s.trainLine, 30, error) &&
             takeInt(p, "trainSeconds", s.trainSeconds, 5, 3600, error) &&
@@ -254,6 +257,7 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   logx::Level level;
   if (!logx::parseLevel(s.logLevel, level)) return error = "logLevel must be debug, info, warn, error or off", false;
   if (!oneOf(s.waveOrder, {"left", "right", "center", "random"})) return error = "waveOrder must be left, right, center or random", false;
+  if (!oneOf(s.clockDay, {"none", "number", "weekday"})) return error = "clockDay must be none, number or weekday", false;
   if (!oneOf(s.waveStyle, {"off", "arrive", "start", "sequential"})) return error = "waveStyle must be off, arrive, start or sequential", false;
   s.bartStation.toUpperCase();
   s.bartDirection.toLowerCase();

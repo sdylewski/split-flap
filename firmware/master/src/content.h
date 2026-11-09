@@ -44,12 +44,53 @@ LINE(bart_green, "BART Green", "FREMONT", "UNION CITY", "SOUTH HAY", "HAYWARD", 
 LINE(bart_orange, "BART Orange", "RICHMOND", "EL CERRITO", "BERKELEY", "OAKLAND 19", "OAKLAND 12", "LAKE MERRT",
      "FRUITVALE", "COLISEUM", "SAN LEANDR", "BAY FAIR", "CASTRO VL", "DUBLIN")
 
+// New York City subway
+LINE(nyc_7, "NYC 7 Flushing", "FLUSHING", "METS", "111 ST", "CORONA", "JUNCTION", "90 ST", "82 ST", "74 ST",
+     "69 ST", "WOODSIDE", "52 ST", "46 ST", "40 ST", "33 ST", "QUEENSBORO", "COURT SQ", "HUNTERS PT", "VERNON",
+     "GRAND CENT", "5 AV", "TIMES SQ", "HUDSON YDS")
+LINE(nyc_1, "NYC 1 Broadway", "VAN CORTL", "231 ST", "215 ST", "DYCKMAN", "191 ST", "168 ST", "157 ST", "145 ST",
+     "137 ST", "125 ST", "116 ST", "110 ST", "103 ST", "96 ST", "86 ST", "79 ST", "72 ST", "66 ST", "59 ST",
+     "50 ST", "TIMES SQ", "34 ST PENN", "28 ST", "23 ST", "18 ST", "14 ST", "CHRISTOPHR", "HOUSTON", "CANAL",
+     "FRANKLIN", "CHAMBERS", "WTC CORTL", "RECTOR", "S FERRY")
+LINE(nyc_a, "NYC A 8th Avenue", "INWOOD", "DYCKMAN", "190 ST", "181 ST", "175 ST", "168 ST", "145 ST", "125 ST",
+     "59 ST", "42 ST", "34 ST PENN", "14 ST", "W 4 ST", "CANAL", "CHAMBERS", "FULTON", "HIGH ST", "JAY ST",
+     "HOYT", "NOSTRAND", "UTICA", "BROADWAY J", "EUCLID", "HOWARD BCH", "BROAD CHNL", "BEACH 67", "FAR ROCKWY")
+
+// Chicago CTA "L"
+LINE(cta_red, "CTA Red Line", "HOWARD", "JARVIS", "MORSE", "LOYOLA", "GRANVILLE", "THORNDALE", "BRYN MAWR",
+     "BERWYN", "ARGYLE", "LAWRENCE", "WILSON", "SHERIDAN", "ADDISON", "BELMONT", "FULLERTON", "N CLYBOURN",
+     "CLARK DIV", "CHICAGO", "GRAND", "LAKE", "MONROE", "JACKSON", "HARRISON", "ROOSEVELT", "CHINATOWN",
+     "SOX 35TH", "47TH", "GARFIELD", "63RD", "69TH", "79TH", "87TH", "95TH")
+LINE(cta_blue, "CTA Blue Line", "OHARE", "ROSEMONT", "CUMBERLAND", "HARLEM", "JEFFERSON", "MONTROSE",
+     "IRVING PK", "ADDISON", "BELMONT", "LOGAN SQ", "CALIFORNIA", "WESTERN", "DAMEN", "DIVISION", "CHICAGO",
+     "GRAND", "CLARK LAKE", "WASHINGTON", "MONROE", "JACKSON", "LASALLE", "CLINTON", "UIC HALSTD", "RACINE",
+     "ILLINOIS M", "WESTERN", "KEDZIE", "PULASKI", "CICERO", "AUSTIN", "OAK PARK", "HARLEM", "FOREST PK")
+
+// Paris Metro (accents dropped - the flaps have none)
+LINE(paris_1, "Paris Metro 1", "LA DEFENSE", "ESPLANADE", "PT NEUILLY", "SABLONS", "PTE MAILLT", "ARGENTINE",
+     "ETOILE", "GEORGE V", "ROOSEVELT", "CHAMPS ELY", "CONCORDE", "TUILERIES", "LOUVRE", "RIVOLI", "CHATELET",
+     "HOTEL VILL", "ST PAUL", "BASTILLE", "GARE LYON", "REUILLY", "NATION", "PTE VINCEN", "ST MANDE", "BERAULT",
+     "VINCENNES")
+LINE(paris_14, "Paris Metro 14", "ST DENIS", "ST OUEN", "PTE CLICHY", "PT CARDINT", "ST LAZARE", "MADELEINE",
+     "PYRAMIDES", "CHATELET", "GARE LYON", "BERCY", "COUR ST EM", "BIBLIOTHEQ", "OLYMPIADES", "MAISON BLC",
+     "BICETRE", "VILLEJUIF", "LHAY ROSES", "CHEVILLY", "THIAIS", "ORLY")
+
+// Copenhagen Metro (AE O A spelled out as A / O / A)
+LINE(cph_m1, "Copenhagen M1", "VANLOSE", "FLINTHOLM", "LINDEVANG", "FASANVEJ", "FREDERIKSB", "FORUM",
+     "NORREPORT", "KGS NYTORV", "CHRISTIANS", "ISL BRYGGE", "DR BYEN", "SUNDBY", "BELLA CTR", "ORESTAD",
+     "VESTAMAGER")
+LINE(cph_m2, "Copenhagen M2 (airport)", "VANLOSE", "FLINTHOLM", "LINDEVANG", "FASANVEJ", "FREDERIKSB", "FORUM",
+     "NORREPORT", "KGS NYTORV", "CHRISTIANS", "AMAGERBRO", "LERGRAVSPK", "ORESUND", "AMAGER STR", "FEMOREN",
+     "KASTRUP", "LUFTHAVNEN")
+
 #undef LINE
 
 // ids use '-' in settings/web ("bart-red"); the table uses '_'
-static const TrainLine* const TRAIN_LINES[] = {&eurostar_line,   &thameslink_line, &acela_line,
-                                               &california_line, &bart_red_line,   &bart_yellow_line,
-                                               &bart_blue_line,  &bart_green_line, &bart_orange_line};
+static const TrainLine* const TRAIN_LINES[] = {
+    &eurostar_line, &thameslink_line, &acela_line,    &california_line, &bart_red_line,
+    &bart_yellow_line, &bart_blue_line, &bart_green_line, &bart_orange_line, &nyc_7_line,
+    &nyc_1_line,    &nyc_a_line,      &cta_red_line,  &cta_blue_line,   &paris_1_line,
+    &paris_14_line, &cph_m1_line,     &cph_m2_line};
 static const uint8_t TRAIN_LINE_COUNT = sizeof(TRAIN_LINES) / sizeof(TRAIN_LINES[0]);
 
 // Famous numbers: number, name

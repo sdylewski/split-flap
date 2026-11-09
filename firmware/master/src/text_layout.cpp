@@ -1,6 +1,7 @@
 #include "text_layout.h"
 
 #include <cctype>
+#include <cstdio>
 
 #include "unit_protocol.h"
 
@@ -144,6 +145,28 @@ bool inWindow(int now, int from, int to) {
   if (from < 0 || to < 0 || from == to) return false;
   if (from < to) return now >= from && now < to;
   return now >= from || now < to;  // wraps past midnight
+}
+
+std::string clockText(int hour, int minute, int monthDay, int weekDay, bool h24, bool leadingZero,
+                      const std::string& day, int width) {
+  static const char* WEEKDAYS[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+  char time[12];
+  int h = h24 ? hour : (hour % 12 == 0 ? 12 : hour % 12);
+  snprintf(time, sizeof(time), leadingZero ? "%02d:%02d%s" : "%d:%02d%s", h, minute, h24 ? "" : (hour < 12 ? "AM" : "PM"));
+  std::string prefix;
+  if (day == "number") {
+    char d[4];
+    snprintf(d, sizeof(d), leadingZero ? "%02d" : "%d", monthDay);
+    prefix = d;
+  } else if (day == "weekday" && weekDay >= 0 && weekDay < 7) {
+    prefix = WEEKDAYS[weekDay];
+  }
+  if (prefix.empty()) return time;
+  for (const char* gap : {"  ", " ", ""}) {
+    std::string text = prefix + gap + time;
+    if ((int)text.size() <= width) return text;
+  }
+  return prefix + time;
 }
 
 long daysUntil(long long target, long long now) {

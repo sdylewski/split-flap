@@ -86,11 +86,13 @@ rejected with a message saying what's wrong. The main keys:
 | `unitCount` | 10 | Units at I2C addresses 0 .. unitCount-1 |
 | `lineSeconds` | 5 | Multi-line text: seconds per line |
 | `timezone` | `PST8PDT,M3.2.0,M11.1.0` | POSIX TZ string (the web UI has a list) |
-| `clock24h` / `dateFormat` | false / `%a %b %d` | Clock and date format (strftime) |
+| `clock24h` / `clockLeadingZero` / `clockDay` | false / true / `none` | Clock: 24-hour, `06:55` vs `6:55`, day in front: `none`, `number` (`05  06:55`), `weekday` (`MON  06:55`) |
+| `dateFormat` | `%a %b %d` | Date mode format (strftime) |
 | `quietEnabled` `quietFrom` `quietTo` `quietBlank` | off, 22:00, 08:00 | No display changes during these hours |
 | `quietPowerSave` | true | During quiet hours: WiFi modem sleep, CPU at 80 MHz, no unit polling, units (2.3+) in deep sleep |
 | `quietRehome` | true | When quiet hours end, every unit re-homes (a full turn) before the mode resumes |
-| `waveMs` / `waveOrder` | 0 / `left` | Wave reveal: ms between units (0 = off), `left` `right` `center` `random` |
+| `waveStyle` / `waveMs` / `waveOrder` | `off` / 300 / `left` | Wave reveal, see [integrations.md](./integrations.md#wave-reveal) |
+| `trainType` / `trainLine` | `random` / | Train station mode: random stations, or a line in order: NYC 7/1/A, CTA Red/Blue, Paris Metro 1/14, Copenhagen M1/M2, BART, Eurostar, Thameslink, Acela, California coast |
 | weather, BART, printers | | See [integrations.md](./integrations.md) |
 | `logLevel` | `info` | Serial log level: `debug` `info` `warn` `error` `off` |
 

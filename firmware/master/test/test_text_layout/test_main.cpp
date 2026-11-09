@@ -3,6 +3,7 @@
 
 #include "text_layout.cpp"  // pure C++, compiled directly into the test binary
 #include "popup_rules.h"
+#include "content.h"
 
 using namespace layout;
 
@@ -122,6 +123,38 @@ void test_popup_windows() {
   TEST_ASSERT_TRUE(windowMatches("22:00", "02:00", 1 * 60));
 }
 
+// Every built-in station / number name must fit on 10 flaps and use only flap characters
+static void assertFlapText(const char* text) {
+  TEST_ASSERT_TRUE_MESSAGE(strlen(text) <= 10, text);
+  for (const char* c = text; *c; c++) TEST_ASSERT_TRUE_MESSAGE(unitproto::letterIndex(*c) >= 0, text);
+}
+
+void test_content_fits_the_flaps() {
+  for (uint8_t i = 0; i < content::RANDOM_STATION_COUNT; i++) assertFlapText(content::RANDOM_STATIONS[i]);
+  for (uint8_t l = 0; l < content::TRAIN_LINE_COUNT; l++) {
+    const content::TrainLine* line = content::TRAIN_LINES[l];
+    TEST_ASSERT_TRUE(line->count >= 2);
+    for (uint8_t i = 0; i < line->count; i++) assertFlapText(line->stops[i]);
+  }
+  for (uint8_t i = 0; i < content::NUMBER_COUNT; i++) {
+    assertFlapText(content::NUMBERS[i][0]);
+    assertFlapText(content::NUMBERS[i][1]);
+  }
+}
+
+void test_clock_text() {
+  // hour, minute, day of month, weekday, 24h, leading zero, day, width
+  TEST_ASSERT_EQUAL_STRING("06:55", clockText(6, 55, 5, 1, true, true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("6:55", clockText(6, 55, 5, 1, true, false, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("05  06:55", clockText(6, 55, 5, 1, true, true, "number", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("5  6:55", clockText(6, 55, 5, 1, true, false, "number", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("MON  06:55", clockText(6, 55, 5, 1, true, true, "weekday", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("06:55PM", clockText(18, 55, 5, 1, false, true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("12:05AM", clockText(0, 5, 5, 1, false, true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("05 06:55PM", clockText(18, 55, 5, 1, false, true, "number", 10).c_str());  // 1 space fits
+  TEST_ASSERT_EQUAL_STRING("MON6:55PM", clockText(18, 55, 5, 1, false, false, "weekday", 9).c_str());
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_short_text_is_one_line);
@@ -140,5 +173,7 @@ int main() {
   RUN_TEST(test_param_table);
   RUN_TEST(test_popup_priorities);
   RUN_TEST(test_popup_windows);
+  RUN_TEST(test_content_fits_the_flaps);
+  RUN_TEST(test_clock_text);
   return UNITY_END();
 }

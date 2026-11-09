@@ -5,7 +5,13 @@ const $ = (id) => document.getElementById(id);
 const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
 const TRAIN_LINES = {
-  line: [["eurostar", "Eurostar"], ["thameslink", "Thameslink"], ["acela", "Acela"], ["california", "California coast"]],
+  line: [
+    ["nyc-7", "New York: 7 (Flushing - Hudson Yards)"], ["nyc-1", "New York: 1 (Van Cortlandt - South Ferry)"],
+    ["nyc-a", "New York: A (Inwood - Far Rockaway)"], ["cta-red", "Chicago: CTA Red Line"],
+    ["cta-blue", "Chicago: CTA Blue Line"], ["paris-1", "Paris: Metro 1"], ["paris-14", "Paris: Metro 14"],
+    ["cph-m1", "Copenhagen: M1"], ["cph-m2", "Copenhagen: M2 (airport)"], ["eurostar", "Eurostar"],
+    ["thameslink", "London: Thameslink"], ["acela", "Acela (Boston - DC)"], ["california", "California coast"],
+  ],
   bart: [["bart-red", "BART Red"], ["bart-yellow", "BART Yellow"], ["bart-blue", "BART Blue"], ["bart-green", "BART Green"], ["bart-orange", "BART Orange"]],
 };
 
@@ -111,6 +117,8 @@ function fillForm(s) {
   setAlign(s.alignment);
   $("text").value = s.text;
   $("clock24h").checked = s.clock24h;
+  $("clockLeadingZero").checked = s.clockLeadingZero;
+  $("clockDay").value = s.clockDay;
   $("dateFormat").value = s.dateFormat;
   $("countdownDate").value = toDateInput(s.countdownTo);
   $("trainType").value = s.trainType;
@@ -186,7 +194,10 @@ $("btnApply").addEventListener("click", () => {
     waveStyle: $("waveStyle").value, waveOrder: $("waveOrder").value, waveMs: n("waveMs") };
   switch (selectedMode) {
     case "text": patch.text = $("text").value.toUpperCase(); break;
-    case "clock": patch.clock24h = $("clock24h").checked; break;
+    case "clock":
+      Object.assign(patch, { clock24h: $("clock24h").checked, clockLeadingZero: $("clockLeadingZero").checked,
+        clockDay: $("clockDay").value });
+      break;
     case "date": patch.dateFormat = $("dateFormat").value; break;
     case "countdown": {
       const value = $("countdownDate").value;
