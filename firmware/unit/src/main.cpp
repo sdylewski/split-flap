@@ -1,5 +1,7 @@
-// Split-flap display - flap unit firmware 2.1.0 (Arduino Nano / ATmega328P)
+// Split-flap display - flap unit firmware 2.2.0 (Arduino Nano / ATmega328P)
 //
+// 2.2.0: no false "magnet missed" when a move ends a few steps before the magnet (units with a
+//        small offset showing the last flap): the hall state is kept between moves.
 // 2.1.0: learns its motor's steps per turn (2038 or 2048 depending on the 28BYJ-48's gearing) from
 //        the distance between magnet passes, stores it in EEPROM and uses it for all flap positions.
 //        All tuning values are parameters in EEPROM (see Param in unit_protocol.h), changed from the
@@ -32,7 +34,7 @@
 
 using namespace unitproto;
 
-#define FIRMWARE_VERSION 21  // 2.1.0
+#define FIRMWARE_VERSION 22  // 2.2.0
 #define SERIAL_BAUD 115200
 
 // ---- Pins ----------------------------------------------------------------------------------
@@ -76,7 +78,8 @@ static uint16_t searched = 0;             // homing: steps searched so far
 static uint16_t sinceMagnet = 0;          // steps since the last magnet edge (miss detection)
 static uint8_t phase = 0;                 // coil phase 0..3
 static bool coilsOn = false;
-static bool lastHall = false;
+static bool lastHall = false;            // hall state at the last step (kept between moves)
+static uint16_t stepsThisMove = 0;
 static uint32_t stepInterval = 5000;      // us
 static uint32_t lastStepUs = 0;
 static uint32_t motorStopMs = 0;          // when the last move finished (coils off after HOLD_MS)
@@ -165,6 +168,7 @@ static void applyParam(uint8_t id) {
     digitalWrite(PIN_LED, LOW);
   } else if (id == P_HALL_ACTIVE_LOW || id == P_REVERSE) {
     homed = false;  // the position can't be trusted any more: home on the next move
+    lastHall = digitalRead(PIN_HALL) == (params[P_HALL_ACTIVE_LOW] ? LOW : HIGH);
   }
 }
 
@@ -239,7 +243,9 @@ static void stepForward() {
 static void startMotion(Motion m) {
   motion = m;
   coilsEnergize();
-  lastHall = hallActive();
+  stepsThisMove = 0;
+  // lastHall is NOT re-read here: if the magnet "appeared" while standing still (the gears settle a
+  // few steps when the coils switch off), the first step sees it as an edge instead of missing it.
   if (status == STATUS_READY || status == STATUS_CAL_ERROR) status = STATUS_MOVING;
 }
 
@@ -329,6 +335,7 @@ static void motorTask() {
   lastStepUs = now;
 
   stepForward();
+  if (stepsThisMove < 0xFFFF) stepsThisMove++;
   bool hall = hallActive();
   bool edge = hall && !lastHall;
   lastHall = hall;
@@ -371,7 +378,16 @@ static void motorTask() {
 
     case Motion::HomeOffset:
     case Motion::ToTarget:
-      if (edge && homed && !calMode) onMagnetEdge();
+      if (edge && homed && !calMode) {
+        if (stepsThisMove <= 2) {
+          // Magnet came up while standing still: it's been passed, but a reading taken at rest
+          // isn't precise enough to correct the position or to measure a turn with.
+          sinceMagnet = 0;
+          edgeTracking = false;
+        } else {
+          onMagnetEdge();
+        }
+      }
       if (homed && sinceMagnet > stepsPerRev + param(P_MAGNET_TOLERANCE)) {
         logEvent(EV_MAGNET_MISSED, sinceMagnet - stepsPerRev);
         edgeTracking = false;
@@ -646,7 +662,7 @@ static void handleCommand() {
 // ---- Serial bench console ------------------------------------------------------------------
 static void printInfo() {
   Serial.print(F("unit ")); Serial.print(address);
-  Serial.print(F(" fw 2.1.0  status ")); Serial.print(status);
+  Serial.print(F(" fw 2.2.0  status ")); Serial.print(status);
   Serial.print(F("  letter '")); Serial.print(LETTERS[letter]);
   Serial.print(F("'  position ")); Serial.print(position);
   Serial.print(homed ? F(" (homed)") : F(" (NOT homed)"));
@@ -748,6 +764,7 @@ void setup() {
 
   EEPROM.get(EE_OFFSET, offset);
   loadParams();
+  lastHall = digitalRead(PIN_HALL) == (params[P_HALL_ACTIVE_LOW] ? LOW : HIGH);
   if (offset >= stepsPerRev) {  // 0xFFFF = never written
     offset = 0;
     offsetUnset = true;
@@ -762,7 +779,7 @@ void setup() {
   setSpeed(param(P_HOME_RPM));
   startI2c();
 
-  Serial.print(F("\nsplit-flap unit 2.1.0, I2C address "));
+  Serial.print(F("\nsplit-flap unit 2.2.0, I2C address "));
   Serial.print(address);
   Serial.print(F(", offset "));
   Serial.print(offset);
