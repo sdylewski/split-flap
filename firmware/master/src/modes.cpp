@@ -399,12 +399,17 @@ void loop() {
 
   // Quiet hours: freeze (or blank) the display
   bool quiet = quietNow(s);
+  static bool quietKnown = false;  // first check after boot: no blanking, no morning re-home
+  bool booting = !quietKnown && net::timeValid();
+  if (booting) quietKnown = true;
   if (quiet != inQuiet) {
     inQuiet = quiet;
     LOGI("modes", quiet ? "quiet hours started (until %s)" : "quiet hours ended", s.quietTo.c_str());
     if (quiet) {
       current.active = false;
-      if (s.quietBlank) display::show("", true);
+      // Only blank when quiet hours START while running - never because the ESP32 rebooted
+      // (an update at night must not move the flaps)
+      if (s.quietBlank && !booting) display::show("", true);
       if (s.quietPowerSave) {
         app::lowPower = true;
         net::setPowerSave(true);

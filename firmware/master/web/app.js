@@ -141,7 +141,7 @@ function fillForm(s) {
   $("phrases").value = s.phrases;
   $("phraseMinSeconds").value = s.phraseMinSeconds;
   $("phraseMaxSeconds").value = s.phraseMaxSeconds;
-  $("numbers").value = s.numbers;
+  renderNumbers(parseNumbers(s.numbers));
   $("numberMinSeconds").value = s.numberMinSeconds;
   $("numberMaxSeconds").value = s.numberMaxSeconds;
   $("numberNameSeconds").value = s.numberNameSeconds;
@@ -239,11 +239,107 @@ $("btnApply").addEventListener("click", () => {
       Object.assign(patch, { printerNotify: $("printerNotify").checked, printerNotifySeconds: n("printerNotifySeconds") });
       break;
     case "famousnumbers":
-      Object.assign(patch, { numbers: $("numbers").value.toUpperCase(), numberMinSeconds: n("numberMinSeconds"),
+      Object.assign(patch, { numbers: numbersFromTable(), numberMinSeconds: n("numberMinSeconds"),
         numberMaxSeconds: n("numberMaxSeconds"), numberNameSeconds: n("numberNameSeconds") });
       break;
   }
   save(patch, $("applyStatus"));
+});
+
+// ---- Famous numbers editor ------------------------------------------------------------------
+// [number, name] - each at most 10 characters, only characters that are on the flaps
+const NUMBER_PRESETS = {
+  "General": [["3.14159", "PI"], ["2.71828", "EULER E"], ["1.61803", "GOLDEN"], ["2.9979 E 8", "LIGHT C"],
+    ["6.022 E 23", "AVOGADRO"], ["9.80665", "GRAVITY G"], ["6.626 E-34", "PLANCK H"], ["-273.15", "ABS ZERO"],
+    ["1.41421", "SQRT 2"], ["1.380 E-23", "BOLTZMANN"], ["6.674 E-11", "GRAV CONST"], ["42", "ANSWER"]],
+  "Mathematics": [["3.14159", "PI"], ["6.28319", "TAU"], ["2.71828", "E"], ["1.61803", "GOLDEN"],
+    ["1.41421", "SQRT 2"], ["1.73205", "SQRT 3"], ["0.69315", "LN 2"], ["0.57721", "EULER GAM"],
+    ["0.91597", "CATALAN"], ["1.20206", "APERY"], ["2.68545", "KHINCHIN"], ["4.66920", "FEIGENBAUM"],
+    ["2.41421", "SILVER"], ["1.32472", "PLASTIC"]],
+  "Quantum mechanics": [["6.626 E-34", "PLANCK H"], ["1.055 E-34", "H BAR"], ["0.0072974", "FINE STRUC"],
+    ["137.036", "1 OVER ALF"], ["9.109 E-31", "ELECTRON"], ["1.673 E-27", "PROTON"], ["1.675 E-27", "NEUTRON"],
+    ["1.602 E-19", "CHARGE E"], ["5.292 E-11", "BOHR RAD"], ["1.097 E 7", "RYDBERG"], ["2.426 E-12", "COMPTON"],
+    ["9.274 E-24", "BOHR MAG"], ["511 KEV", "ELECTRON"]],
+  "Thermodynamics": [["1.380 E-23", "BOLTZMANN"], ["8.314", "GAS CONST"], ["-273.15", "ABS ZERO"],
+    ["273.16", "TRIPLE PT"], ["5.670 E-8", "STEFAN BOL"], ["2.898 E-3", "WIEN"], ["6.022 E 23", "AVOGADRO"],
+    ["4.184", "CALORIE J"], ["101325", "ATMOSPHERE"], ["100", "WATER BOIL"], ["2.7255", "CMB KELVIN"]],
+  "Electromagnetism": [["2.9979 E 8", "LIGHT C"], ["1.602 E-19", "CHARGE E"], ["8.854 E-12", "EPSILON 0"],
+    ["1.2566 E-6", "MU 0"], ["8.988 E 9", "COULOMB K"], ["96485", "FARADAY"], ["376.73", "VACUUM Z"],
+    ["25812.8", "VON KLITZ"], ["2.068 E-15", "FLUX QUANT"]],
+  "Astronomy": [["1.496 E 11", "AU METERS"], ["9.461 E 15", "LIGHT YEAR"], ["3.086 E 16", "PARSEC"],
+    ["5.972 E 24", "EARTH KG"], ["1.989 E 30", "SUN KG"], ["6371", "EARTH KM"], ["384400", "MOON KM"],
+    ["6.674 E-11", "GRAV CONST"], ["70", "HUBBLE"], ["13.8", "UNIVERSE"], ["365.256", "YEAR DAYS"]],
+  "Chemistry": [["6.022 E 23", "AVOGADRO"], ["8.314", "GAS CONST"], ["96485", "FARADAY"], ["22.414", "MOLAR VOL"],
+    ["1.008", "HYDROGEN"], ["12.011", "CARBON"], ["15.999", "OXYGEN"], ["18.015", "WATER"], ["7", "NEUTRAL PH"],
+    ["1.660 E-27", "ATOMIC U"]],
+};
+
+function flapOk(text) {
+  return text.length <= 10 && /^[A-Z0-9 $&#:.\-?!]*$/.test(text.toUpperCase());
+}
+
+function numberRow(number = "", name = "") {
+  const tr = document.createElement("tr");
+  tr.innerHTML = '<td><input type="text" data-k="number" maxlength="10"></td>' +
+    '<td><input type="text" data-k="name" maxlength="10"></td>' +
+    '<td><button type="button" title="Remove">&times;</button></td>';
+  tr.querySelector('[data-k="number"]').value = number;
+  tr.querySelector('[data-k="name"]').value = name;
+  tr.querySelectorAll("input").forEach((input) => {
+    const check = () => input.classList.toggle("invalid", !flapOk(input.value));
+    input.addEventListener("input", check);
+    check();
+  });
+  tr.querySelector("button").addEventListener("click", () => tr.remove());
+  return tr;
+}
+
+function renderNumbers(pairs) {
+  const body = $("numberTable").querySelector("tbody");
+  body.innerHTML = "";
+  pairs.forEach(([number, name]) => body.appendChild(numberRow(number, name)));
+  for (let i = pairs.length; i < 3; i++) body.appendChild(numberRow());  // a few empty rows to type into
+}
+
+// settings.numbers is "number,name,number,name,..."
+function parseNumbers(text) {
+  const parts = (text || "").split(",").map((p) => p.trim()).filter((p) => p.length);
+  const pairs = [];
+  for (let i = 0; i + 1 < parts.length; i += 2) pairs.push([parts[i], parts[i + 1]]);
+  return pairs;
+}
+
+function numbersFromTable() {
+  return $$("#numberTable tbody tr")
+    .map((tr) => [tr.querySelector('[data-k="number"]').value.trim().toUpperCase(),
+      tr.querySelector('[data-k="name"]').value.trim().toUpperCase()])
+    .filter(([number, name]) => number && name)
+    .map(([number, name]) => `${number.replace(/,/g, "")},${name.replace(/,/g, "")}`)
+    .join(",");
+}
+
+$("numberPreset").innerHTML = Object.keys(NUMBER_PRESETS).map((k) => `<option>${k}</option>`).join("") +
+  '<option value="random">Random mix (15 from all lists)</option>';
+$("btnNumberPreset").addEventListener("click", () => {
+  const choice = $("numberPreset").value;
+  let pairs;
+  if (choice === "random") {
+    const seen = new Set();
+    const all = Object.values(NUMBER_PRESETS).flat().filter(([, name]) => !seen.has(name) && seen.add(name));
+    for (let i = all.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [all[i], all[j]] = [all[j], all[i]];
+    }
+    pairs = all.slice(0, 15);
+  } else {
+    pairs = NUMBER_PRESETS[choice];
+  }
+  renderNumbers(pairs);
+});
+$("btnAddNumber").addEventListener("click", () => {
+  const row = numberRow();
+  $("numberTable").querySelector("tbody").appendChild(row);
+  row.querySelector("input").focus();
 });
 
 // ---- Pop-ups tab ---------------------------------------------------------------------------

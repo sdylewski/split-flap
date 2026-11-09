@@ -109,8 +109,20 @@
           </div>
         </div>
         <div class="mode-panel" data-panel="famousnumbers">
-          <label for="numbers">Number, name pairs (comma separated, empty = built-in)</label>
-          <textarea id="numbers" rows="4" placeholder="3.14159, PI, 2.71828, EULER E"></textarea>
+          <div class="row">
+            <div><label for="numberPreset">Fill from a list</label>
+              <select id="numberPreset"></select></div>
+            <div><label>&nbsp;</label><button id="btnNumberPreset">Load list (replaces the table)</button></div>
+          </div>
+          <table id="numberTable" class="numbers">
+            <thead><tr><th>Number</th><th>Name</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <div class="actions">
+            <button id="btnAddNumber">Add another row</button>
+            <span class="hint">Up to 10 characters each, using what's on the flaps: A-Z 0-9 space . - : ? ! $ &amp; #
+              (no % / ^). Empty rows are skipped; an empty table uses the built-in list.</span>
+          </div>
           <div class="row">
             <div><label for="numberMinSeconds">Min seconds</label><input type="number" id="numberMinSeconds" min="5" max="3600"></div>
             <div><label for="numberMaxSeconds">Max seconds</label><input type="number" id="numberMaxSeconds" min="5" max="3600"></div>
