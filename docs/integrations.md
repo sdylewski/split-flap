@@ -1,0 +1,170 @@
+# Live Data and Integrations
+
+The display can show live data (weather, BART departures, 3D printers) and take messages from
+Home Assistant, Siri or anything else that can send an HTTP request. Live data is fetched by a
+background task on the ESP32, so a slow website never stalls the flaps.
+
+Everything here is set up in the web UI (`http://flappy.local`, Display tab) or with the API
+(`POST /api/settings`, see [software.md](./software.md#26-api)).
+
+## Weather
+
+Mode `weather`. Data from [Open-Meteo](https://open-meteo.com) (free, no account), refreshed every
+10 minutes while the mode is on. It cycles three pages:
+
+| Page | Example | Meaning |
+|---|---|---|
+| Now | `57F CLEAR` | Temperature and conditions right now |
+| Today | `HI63 LO50` | Today's high and low |
+| Rain | `RAIN 40` / `NO RAIN` | Chance of rain today, in % (there's no % flap) |
+
+Pick the place in the Weather panel: type a city, choose it from the list, press **Show on
+display**. Settings: `weatherLat`, `weatherLon`, `weatherPlace`, `weatherFahrenheit`,
+`weatherSeconds` (seconds per page).
+
+## BART departures
+
+Mode `bart`. Real-time departures from the
+[BART API](https://api.bart.gov/docs/overview/index.aspx), refreshed every 30 seconds while the
+mode is on. Shows the next four trains, one at a time:
+
+```
+DALY 5 MIN     ANTC 13MIN     RICH NOW
+```
+
+The destination is BART's four-letter station code
+([list](https://api.bart.gov/docs/overview/abbrev.aspx)).
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `bartStation` | `MONT` | Your station (the web UI has a list) |
+| `bartDirection` | (both) | `n` = northbound only, `s` = southbound only |
+| `bartSeconds` | 6 | Seconds per train |
+| `bartKey` | BART's public key | Works for everyone. You can [register your own key](https://api.bart.gov/api/register.aspx) |
+
+## 3D printers (Klipper / Moonraker)
+
+Add printers in the Printers panel: a short **name** for the display (up to 10 characters) and the
+**host** (`printy.local`, `voron.local` or an IP; port 7125 is assumed). The master checks them
+every 15 seconds.
+
+- **In any mode:** when a running print finishes, the display shows `PRINTY DONE` for
+  `printerNotifySeconds` (default 5 minutes), then goes back to what it was showing. A failed
+  print shows `PRINTY ERROR`. Not during quiet hours.
+- **Mode `printers`:** progress of each printer: `PRINTY 66`, `LEFT 1:05`, `VORON DONE`,
+  `VORON IDLE`, `VORON OFF` (not reachable).
+
+## Wave reveal
+
+Look card → **Reveal**: instead of all flaps starting at once, they start one after another,
+left to right, right to left, from the center or in random order, `waveMs` apart (try 150 ms).
+It applies to every mode.
+
+## Messages from anything: the API
+
+```sh
+# Show text (switches to text mode, stays until changed)
+curl -H 'Content-Type: application/json' -d '{"text":"HELLO"}' http://flappy.local/api/message
+
+# Show it for 60 seconds, then go back to the current mode (notifications)
+curl -H 'Content-Type: application/json' -d '{"text":"WASHER DONE","seconds":60}' http://flappy.local/api/message
+```
+
+| Field | Meaning |
+|---|---|
+| `text` | Up to 200 characters. Long text wraps onto several lines |
+| `seconds` | Optional: show temporarily, then go back to the current mode |
+| `at` | Optional: unix time to show it (scheduled message) |
+| `dictated` | Optional `true`: clean up dictated text - drops the closing `.`/`!`/`?` and apostrophes |
+
+Characters that aren't on the flaps show as blanks. Lower case is fine.
+
+## Home Assistant
+
+Home Assistant runs at `http://192.168.0.155:8123` on this network. Add this to
+`configuration.yaml` (Settings → System → Restart after saving):
+
+```yaml
+rest_command:
+  # Show a message for a while, then back to the current mode
+  flappy_notify:
+    url: "http://192.168.0.111/api/message"
+    method: POST
+    content_type: "application/json"
+    payload: '{"text": "{{ text }}", "seconds": {{ seconds | default(120) }}}'
+  # Show a message until something else is shown
+  flappy_show:
+    url: "http://192.168.0.111/api/message"
+    method: POST
+    content_type: "application/json"
+    payload: '{"text": "{{ text }}"}'
+  # Switch mode: text clock date countdown weather bart printers ...
+  flappy_mode:
+    url: "http://192.168.0.111/api/settings"
+    method: POST
+    content_type: "application/json"
+    payload: '{"mode": "{{ mode }}"}'
+
+sensor:
+  # What the display shows right now
+  - platform: rest
+    name: Flappy display
+    resource: http://192.168.0.111/api/state
+    value_template: "{{ value_json.display.line | trim }}"
+    json_attributes_path: "$.display"
+    json_attributes: [mode, status, text]
+    scan_interval: 30
+```
+
+Then use it from any automation, for example:
+
+```yaml
+automation:
+  - alias: "Washer done on Flappy"
+    triggers:
+      - trigger: state
+        entity_id: sensor.washer_status
+        to: "finished"
+    actions:
+      - action: rest_command.flappy_notify
+        data:
+          text: "WASHER DONE"
+          seconds: 600
+
+  - alias: "Flappy shows BART on weekday mornings"
+    triggers:
+      - trigger: time
+        at: "07:30:00"
+    conditions:
+      - condition: time
+        weekday: [mon, tue, wed, thu, fri]
+    actions:
+      - action: rest_command.flappy_mode
+        data:
+          mode: bart
+```
+
+Use the IP (`192.168.0.111`) rather than `flappy.local`: Home Assistant OS doesn't always resolve
+`.local` names.
+
+## Siri ("Hey Siri, Flappy")
+
+Siri can't take a message inside the trigger phrase for a custom shortcut, so it's a short
+conversation: **"Hey Siri, Flappy"** → *"What should Flappy show?"* → **"Hello"**.
+
+Make the Shortcut once on the iPhone (it syncs to your other Apple devices):
+
+1. Open **Shortcuts** → **+** → tap the name at the top and call it **Flappy**.
+2. Add the action **Ask for Input**: Input type *Text*, prompt *What should Flappy show?*
+3. Add the action **Get Contents of URL**:
+   - URL: `http://192.168.0.111/api/message`
+   - tap **Show More**: Method **POST**, Request Body **JSON**
+   - add field `text` (Text) → tap the value and choose the variable **Provided Input**
+   - add field `dictated` (Boolean) → **True**
+4. Optional: add **Speak Text** with *Done* so Siri confirms.
+
+Then say **"Hey Siri, Flappy"**. You can call the shortcut anything, for example "Show on
+Flappy" → *"Hey Siri, show on Flappy"*. For a message that disappears after a minute, add a
+`seconds` (Number) field with `60`.
+
+The phone has to be on the home WiFi (or reach it over a VPN) - the display isn't on the internet.

@@ -18,7 +18,10 @@ rewritten firmware, while keeping the 3D-printable mechanical design.
 - Unit firmware that re-syncs at every magnet pass, learns its motor's steps per turn and
   reports diagnostics: supply voltage, slipping, missed magnets, reboots, I2C errors
 - Self-healing I2C bus, status LED blink codes, one log with levels everywhere
-- OTA updates, JSON API, PlatformIO builds with pinned versions and CI
+- Live data: weather, real-time BART departures, Klipper 3D printer progress and "print done"
+  alerts, plus a wave reveal effect - see [`docs/integrations.md`](./docs/integrations.md)
+- Messages from Home Assistant, Siri Shortcuts or any HTTP client
+- OTA updates, JSON API, crash reports over WiFi, PlatformIO builds with pinned versions and CI
 
 ## Documentation
 
@@ -32,6 +35,7 @@ All documentation lives under [`docs/`](./docs):
 | [`docs/esp32.md`](./docs/esp32.md) | Wiring the ESP32 master into the ESP-01 header |
 | [`docs/software.md`](./docs/software.md) | Building and flashing both firmwares, web UI, settings, API, troubleshooting |
 | [`docs/console.md`](./docs/console.md) | Console commands, calibration, reading the diagnostics |
+| [`docs/integrations.md`](./docs/integrations.md) | Weather, BART, 3D printers, wave reveal, Home Assistant, Siri |
 | [`docs/SplitFlapInstructions.md`](./docs/SplitFlapInstructions.md) | Legacy PDF converted to Markdown |
 
 ## Repository Structure

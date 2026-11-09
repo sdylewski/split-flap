@@ -1,5 +1,7 @@
 #include "display.h"
 
+#include <algorithm>
+#include <cstdlib>
 #include <string>
 #include <vector>
 
@@ -48,7 +50,12 @@ void show(const String& text, bool force, const char* alignment) {
   enter(State::WaitBefore);
 }
 
-void redraw() { show(requested, true, requestedAlign.c_str()); }
+// Only if something was shown since boot: right after a reboot during quiet hours nothing has been
+// requested yet, and "redrawing" would blank the display.
+void redraw() {
+  if (lines.empty()) return;
+  show(requested, true, requestedAlign.c_str());
+}
 
 static bool pollDue() {
   if (millis() - lastPoll < DISPLAY_POLL_MS) return false;
@@ -56,23 +63,50 @@ static bool pollDue() {
   return true;
 }
 
-static void writeLine() {
-  int n = units::count();
-  std::string text = layout::align(lines[index], n, layout::parseAlign(requestedAlign.c_str()));
-  int replaced = layout::sanitize(text);
-  if (replaced > 0) LOGW("display", "%d character(s) not on the flaps - shown as blank", replaced);
+// Writing a line: all units at once, or one after another ("wave", settings.waveMs apart)
+static std::string writeText;
+static std::vector<int> writeOrder;
+static size_t writeNext = 0;
+static int writeFailed = 0;
+static uint8_t writeRpm = 0;
 
-  uint8_t rpm = unitproto::rpmFromSpeed(settings::current().speed);
-  int failed = 0;
-  for (int a = 0; a < n; a++) {
-    if (!units::writeLetter(a, unitproto::letterIndex(text[a]), rpm)) failed++;
+static void prepareWrite() {
+  const Settings& s = settings::current();
+  int n = units::count();
+  writeText = layout::align(lines[index], n, layout::parseAlign(requestedAlign.c_str()));
+  int replaced = layout::sanitize(writeText);
+  if (replaced > 0) LOGW("display", "%d character(s) not on the flaps - shown as blank", replaced);
+  writeRpm = unitproto::rpmFromSpeed(s.speed);
+  writeNext = 0;
+  writeFailed = 0;
+  writeOrder.clear();
+  for (int a = 0; a < n; a++) writeOrder.push_back(a);
+  if (s.waveOrder == "right") {
+    std::reverse(writeOrder.begin(), writeOrder.end());
+  } else if (s.waveOrder == "center") {  // from the middle outwards
+    std::sort(writeOrder.begin(), writeOrder.end(), [n](int x, int y) {
+      return std::abs(2 * x - (n - 1)) < std::abs(2 * y - (n - 1));
+    });
+  } else if (s.waveOrder == "random") {
+    for (int i = n - 1; i > 0; i--) std::swap(writeOrder[i], writeOrder[random(0, i + 1)]);
   }
-  lastWrite = millis();
-  onFlaps = text.c_str();
   if (lines.size() > 1) {
-    LOGD("display", "line %u/%u \"%s\"", (unsigned)index + 1, (unsigned)lines.size(), text.c_str());
+    LOGD("display", "line %u/%u \"%s\"", (unsigned)index + 1, (unsigned)lines.size(), writeText.c_str());
   }
-  if (failed > 0) LOGW("display", "%d unit(s) did not take the update", failed);
+}
+
+// Returns true when every unit has been written
+static bool writeStep(uint32_t sinceStart) {
+  uint32_t wave = (uint32_t)settings::current().waveMs;
+  while (writeNext < writeOrder.size() && sinceStart >= writeNext * wave) {
+    int a = writeOrder[writeNext++];
+    if (!units::writeLetter(a, unitproto::letterIndex(writeText[a]), writeRpm)) writeFailed++;
+  }
+  if (writeNext < writeOrder.size()) return false;
+  lastWrite = millis();
+  onFlaps = writeText.c_str();
+  if (writeFailed > 0) LOGW("display", "%d unit(s) did not take the update", writeFailed);
+  return true;
 }
 
 void loop() {
@@ -86,12 +120,12 @@ void loop() {
       if (!pollDue()) break;
       if (units::pollAll() && millis() - stateSince < DISPLAY_MOVE_TIMEOUT_MS) break;
       if (millis() - lastWrite < DISPLAY_WRITE_SPACING_MS) break;  // units ignore moves < 2 s apart
+      prepareWrite();
       enter(State::Write);
       break;
 
     case State::Write:
-      writeLine();
-      enter(State::WaitStart);
+      if (writeStep(millis() - stateSince)) enter(State::WaitStart);
       break;
 
     case State::WaitStart:  // give the units a moment to start before asking if they're done

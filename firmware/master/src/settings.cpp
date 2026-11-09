@@ -1,6 +1,9 @@
 #include "settings.h"
 
 #include <LittleFS.h>
+#include <Preferences.h>
+
+#include <memory>
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 
@@ -11,11 +14,13 @@
 namespace settings {
 
 static const char* FILE_PATH = "/settings.json";
-static const char* MODES[] = {"text", "clock", "date", "countdown", "trainstation", "randomphrase", "famousnumbers"};
+static const char* MODES[] = {"text",          "clock",   "date", "countdown", "trainstation", "randomphrase",
+                              "famousnumbers", "weather", "bart", "printers"};
 
 static Settings live;
 static Settings published;
 static SemaphoreHandle_t lock = nullptr;
+static volatile uint32_t rev = 1;
 
 bool isValidMode(const String& mode) {
   for (const char* m : MODES) {
@@ -27,8 +32,11 @@ bool isValidMode(const String& mode) {
 static void publish() {
   xSemaphoreTake(lock, portMAX_DELAY);
   published = live;
+  rev++;
   xSemaphoreGive(lock);
 }
+
+uint32_t revision() { return rev; }
 
 Settings& current() { return live; }
 
@@ -67,6 +75,25 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["quietTo"] = s.quietTo;
   o["quietBlank"] = s.quietBlank;
   o["logLevel"] = s.logLevel;
+  o["waveMs"] = s.waveMs;
+  o["waveOrder"] = s.waveOrder;
+  o["weatherLat"] = s.weatherLat;
+  o["weatherLon"] = s.weatherLon;
+  o["weatherPlace"] = s.weatherPlace;
+  o["weatherFahrenheit"] = s.weatherFahrenheit;
+  o["weatherSeconds"] = s.weatherSeconds;
+  o["bartStation"] = s.bartStation;
+  o["bartDirection"] = s.bartDirection;
+  o["bartKey"] = s.bartKey;
+  o["bartSeconds"] = s.bartSeconds;
+  o["printerNotify"] = s.printerNotify;
+  o["printerNotifySeconds"] = s.printerNotifySeconds;
+  JsonArray printers = o["printers"].to<JsonArray>();
+  for (const PrinterConfig& p : s.printers) {
+    JsonObject item = printers.add<JsonObject>();
+    item["name"] = p.name;
+    item["host"] = p.host;
+  }
   if (includeScheduled) {
     JsonArray list = o["scheduled"].to<JsonArray>();
     for (const ScheduledMessage& m : s.scheduled) {
@@ -103,6 +130,22 @@ static bool takeInt64(JsonObjectConst p, const char* key, int64_t& field, String
     return false;
   }
   field = v.as<long long>();
+  return true;
+}
+
+static bool takeFloat(JsonObjectConst p, const char* key, float& field, float min, float max, String& error) {
+  JsonVariantConst v = p[key];
+  if (v.isNull()) return true;
+  if (!v.is<double>() && !v.is<long>()) {
+    error = String(key) + " must be a number";
+    return false;
+  }
+  float value = v.as<float>();
+  if (value < min || value > max) {
+    error = String(key) + " is out of range";
+    return false;
+  }
+  field = value;
   return true;
 }
 
@@ -161,7 +204,18 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeInt(p, "numberNameSeconds", s.numberNameSeconds, 1, 60, error) &&
             takeBool(p, "quietEnabled", s.quietEnabled, error) && takeString(p, "quietFrom", s.quietFrom, 5, error) &&
             takeString(p, "quietTo", s.quietTo, 5, error) && takeBool(p, "quietBlank", s.quietBlank, error) &&
-            takeString(p, "logLevel", s.logLevel, 10, error);
+            takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 1000, error) &&
+            takeString(p, "waveOrder", s.waveOrder, 10, error) &&
+            takeFloat(p, "weatherLat", s.weatherLat, -90, 90, error) &&
+            takeFloat(p, "weatherLon", s.weatherLon, -180, 180, error) &&
+            takeString(p, "weatherPlace", s.weatherPlace, 60, error) &&
+            takeBool(p, "weatherFahrenheit", s.weatherFahrenheit, error) &&
+            takeInt(p, "weatherSeconds", s.weatherSeconds, 3, 120, error) &&
+            takeString(p, "bartStation", s.bartStation, 4, error) &&
+            takeString(p, "bartDirection", s.bartDirection, 1, error) &&
+            takeString(p, "bartKey", s.bartKey, 40, error) && takeInt(p, "bartSeconds", s.bartSeconds, 3, 120, error) &&
+            takeBool(p, "printerNotify", s.printerNotify, error) &&
+            takeInt(p, "printerNotifySeconds", s.printerNotifySeconds, 10, 7200, error);
   if (!ok) return false;
 
   if (!isValidMode(s.mode)) return error = "unknown mode '" + s.mode + "'", false;
@@ -172,6 +226,29 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   if (s.timezone.length() < 3) return error = "timezone must be a POSIX TZ string like PST8PDT,M3.2.0,M11.1.0", false;
   logx::Level level;
   if (!logx::parseLevel(s.logLevel, level)) return error = "logLevel must be debug, info, warn, error or off", false;
+  if (!oneOf(s.waveOrder, {"left", "right", "center", "random"})) return error = "waveOrder must be left, right, center or random", false;
+  s.bartStation.toUpperCase();
+  s.bartDirection.toLowerCase();
+  if (s.bartStation.length() != 4) return error = "bartStation must be a 4-letter station code (e.g. MONT)", false;
+  if (!oneOf(s.bartDirection, {"", "n", "s"})) return error = "bartDirection must be empty, n or s", false;
+
+  JsonVariantConst printerList = p["printers"];
+  if (!printerList.isNull()) {
+    if (!printerList.is<JsonArrayConst>()) return error = "printers must be a list", false;
+    s.printers.clear();
+    for (JsonObjectConst item : printerList.as<JsonArrayConst>()) {
+      PrinterConfig printer;
+      printer.name = item["name"] | "";
+      printer.host = item["host"] | "";
+      printer.name.toUpperCase();
+      if (printer.name.length() == 0 || printer.name.length() > 10 || printer.host.length() == 0 ||
+          printer.host.length() > 60) {
+        return error = "each printer needs a name (1-10 characters) and a host", false;
+      }
+      if (s.printers.size() >= 4) return error = "at most 4 printers", false;
+      s.printers.push_back(printer);
+    }
+  }
   if (s.phraseMaxSeconds < s.phraseMinSeconds) s.phraseMaxSeconds = s.phraseMinSeconds;
   if (s.numberMaxSeconds < s.numberMinSeconds) s.numberMaxSeconds = s.numberMinSeconds;
 
@@ -210,22 +287,23 @@ bool removeScheduled(Settings& s, int64_t at) {
 }
 
 // ---- Storage -----------------------------------------------------------------------------
+// Settings live in NVS (the ESP32's key/value flash area), NOT in LittleFS: uploading the web
+// files (uploadfs) replaces the whole LittleFS image and would wipe them. An older
+// /settings.json in LittleFS is migrated once.
+static Preferences prefs;
+static const char* NVS_NAMESPACE = "flappy";
+static const char* NVS_KEY = "settings";
+
 bool save() {
   JsonDocument doc;
   toJson(live, doc.to<JsonObject>(), true);
-  File file = LittleFS.open("/settings.tmp", "w");
-  if (!file) {
-    LOGE("settings", "can't write /settings.tmp");
+  String json;
+  serializeJson(doc, json);
+  size_t written = prefs.putBytes(NVS_KEY, json.c_str(), json.length());
+  if (written != json.length()) {
+    LOGE("settings", "saving to NVS failed (%u of %u bytes)", (unsigned)written, (unsigned)json.length());
     return false;
   }
-  size_t written = serializeJson(doc, file);
-  file.close();
-  if (written == 0) {
-    LOGE("settings", "writing settings failed");
-    return false;
-  }
-  LittleFS.remove(FILE_PATH);
-  LittleFS.rename("/settings.tmp", FILE_PATH);  // a power cut mid-write can't corrupt the real file
   LOGD("settings", "saved (%u bytes)", (unsigned)written);
   return true;
 }
@@ -238,35 +316,53 @@ void commit(const Settings& updated) {
   if (logx::parseLevel(live.logLevel, level)) logx::setSerialLevel(level);
 }
 
+static bool loadJson(const String& json, const char* source) {
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, json);
+  String error;
+  Settings loaded;
+  if (err) {
+    LOGE("settings", "%s is corrupt (%s) - using defaults", source, err.c_str());
+    return false;
+  }
+  if (!merge(Settings(), doc.as<JsonObjectConst>(), loaded, error)) {
+    LOGE("settings", "invalid value in %s: %s - using defaults", source, error.c_str());
+    return false;
+  }
+  live = loaded;
+  LOGI("settings", "loaded from %s: mode %s, %d units, %u scheduled, %u printer(s)", source, live.mode.c_str(),
+       live.unitCount, (unsigned)live.scheduled.size(), (unsigned)live.printers.size());
+  return true;
+}
+
 void begin() {
   if (!lock) lock = xSemaphoreCreateMutex();
-  if (!LittleFS.begin(true)) {  // true = format if it can't be mounted
-    LOGE("settings", "LittleFS mount failed - running with defaults");
-    publish();
-    return;
-  }
-  LOGI("settings", "LittleFS: %u of %u KB used", (unsigned)(LittleFS.usedBytes() / 1024),
-       (unsigned)(LittleFS.totalBytes() / 1024));
-
-  File file = LittleFS.open(FILE_PATH, "r");
-  if (!file) {
-    LOGW("settings", "%s not found - using defaults", FILE_PATH);
-    save();
+  prefs.begin(NVS_NAMESPACE, false);
+  if (!LittleFS.begin(true)) {  // web files; true = format if it can't be mounted
+    LOGE("settings", "LittleFS mount failed - web files missing");
   } else {
-    JsonDocument doc;
-    DeserializationError err = deserializeJson(doc, file);
+    LOGI("settings", "LittleFS (web files): %u of %u KB used", (unsigned)(LittleFS.usedBytes() / 1024),
+         (unsigned)(LittleFS.totalBytes() / 1024));
+  }
+
+  size_t length = prefs.getBytesLength(NVS_KEY);
+  if (length > 0) {
+    std::unique_ptr<char[]> buffer(new char[length + 1]);
+    prefs.getBytes(NVS_KEY, buffer.get(), length);
+    buffer[length] = 0;
+    loadJson(String(buffer.get()), "NVS");
+  } else if (LittleFS.exists(FILE_PATH)) {
+    File file = LittleFS.open(FILE_PATH, "r");
+    String json = file.readString();
     file.close();
-    String error;
-    Settings loaded;
-    if (err) {
-      LOGE("settings", "%s is corrupt (%s) - using defaults", FILE_PATH, err.c_str());
-    } else if (!merge(Settings(), doc.as<JsonObjectConst>(), loaded, error)) {
-      LOGE("settings", "invalid value in %s: %s - using defaults", FILE_PATH, error.c_str());
-    } else {
-      live = loaded;
-      LOGI("settings", "loaded: mode %s, %d units, %u scheduled", live.mode.c_str(), live.unitCount,
-           (unsigned)live.scheduled.size());
+    if (loadJson(json, FILE_PATH)) {
+      save();
+      LittleFS.remove(FILE_PATH);
+      LOGI("settings", "moved settings from %s to NVS", FILE_PATH);
     }
+  } else {
+    LOGW("settings", "no saved settings - using defaults");
+    save();
   }
   logx::Level level;
   if (logx::parseLevel(live.logLevel, level)) logx::setSerialLevel(level);

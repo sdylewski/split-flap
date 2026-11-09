@@ -43,6 +43,9 @@
           <button data-mode="trainstation">Train station</button>
           <button data-mode="randomphrase">Phrases</button>
           <button data-mode="famousnumbers">Numbers</button>
+          <button data-mode="weather">Weather</button>
+          <button data-mode="bart">BART</button>
+          <button data-mode="printers">Printers</button>
         </div>
 
         <div class="mode-panel" data-panel="text">
@@ -99,6 +102,48 @@
             <div><label for="numberNameSeconds">Name after (s)</label><input type="number" id="numberNameSeconds" min="1" max="60"></div>
           </div>
         </div>
+        <div class="mode-panel" data-panel="weather">
+          <label for="weatherSearch">Place</label>
+          <div class="row">
+            <div><input type="text" id="weatherSearch" placeholder="Search a city, e.g. Oakland"></div>
+            <div><select id="weatherResults"><option value="">-</option></select></div>
+          </div>
+          <p class="hint" id="weatherWhere"></p>
+          <div class="row">
+            <div><label class="check"><input type="checkbox" id="weatherFahrenheit"> Fahrenheit</label></div>
+            <div><label for="weatherSeconds">Seconds per page</label><input type="number" id="weatherSeconds" min="3" max="120"></div>
+          </div>
+          <p class="hint">Cycles: now (<code>57F CLEAR</code>), today's high/low (<code>HI63 LO50</code>), chance of rain
+            (<code>RAIN 40</code> = 40 %). Data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, refreshed every 10 minutes.</p>
+        </div>
+        <div class="mode-panel" data-panel="bart">
+          <div class="row">
+            <div><label for="bartStation">Station</label><select id="bartStation"></select></div>
+            <div><label for="bartDirection">Direction</label>
+              <select id="bartDirection"><option value="">Both</option><option value="n">Northbound</option><option value="s">Southbound</option></select></div>
+            <div><label for="bartSeconds">Seconds per train</label><input type="number" id="bartSeconds" min="3" max="120"></div>
+          </div>
+          <label for="bartKey">API key</label>
+          <input type="text" id="bartKey" autocomplete="off" spellcheck="false">
+          <p class="hint">Shows the next departures, e.g. <code>DALY 5 MIN</code>, refreshed every 30 s. The default key is BART's
+            public key; you can <a href="https://api.bart.gov/api/register.aspx" target="_blank" rel="noopener">register your own</a>.
+            <a href="https://api.bart.gov/docs/overview/index.aspx" target="_blank" rel="noopener">BART API documentation</a> ·
+            <a href="https://api.bart.gov/docs/overview/abbrev.aspx" target="_blank" rel="noopener">station codes</a>.</p>
+        </div>
+        <div class="mode-panel" data-panel="printers">
+          <p class="hint">Klipper printers (Moonraker API, port 7125). The mode shows progress (<code>PRINTY 66</code>,
+            <code>LEFT 1:05</code>); in any mode, a print that finishes or fails is shown for a while.</p>
+          <ul id="printerList" class="list"></ul>
+          <div class="row">
+            <div><label for="printerName">Name on the display</label><input type="text" id="printerName" maxlength="10" placeholder="PRINTY"></div>
+            <div><label for="printerHost">Host</label><input type="text" id="printerHost" placeholder="printy.local"></div>
+            <div><label>&nbsp;</label><button id="btnAddPrinter">Add printer</button></div>
+          </div>
+          <div class="row">
+            <div><label class="check"><input type="checkbox" id="printerNotify"> Show "NAME DONE" when a print finishes</label></div>
+            <div><label for="printerNotifySeconds">for (seconds)</label><input type="number" id="printerNotifySeconds" min="10" max="7200"></div>
+          </div>
+        </div>
       </div>
 
       <div class="card">
@@ -114,6 +159,17 @@
           </div>
           <div><label for="speed">Speed <span id="speedValue"></span></label><input type="range" id="speed" min="1" max="100"></div>
           <div><label for="lineSeconds">Seconds per line</label><input type="number" id="lineSeconds" min="1" max="60"></div>
+        </div>
+        <div class="row">
+          <div><label for="waveOrder">Reveal</label>
+            <select id="waveOrder">
+              <option value="off">All at once</option>
+              <option value="left">Wave, left to right</option>
+              <option value="right">Wave, right to left</option>
+              <option value="center">Wave, from the center</option>
+              <option value="random">Random order</option>
+            </select></div>
+          <div><label for="waveMs">Wave delay <span id="waveMsValue"></span></label><input type="range" id="waveMs" min="50" max="600" step="10"></div>
         </div>
       </div>
 
@@ -216,6 +272,15 @@
             <select id="logLevel"><option>debug</option><option>info</option><option>warn</option><option>error</option><option>off</option></select></div>
         </div>
         <div class="actions"><button id="btnSystem">Save</button><span class="status" id="systemStatus"></span></div>
+      </div>
+      <div class="card">
+        <h2>Siri, Home Assistant and scripts</h2>
+        <p class="hint">Anything on the home network can put text on the display:</p>
+        <pre class="terminal small" style="height:auto">curl -H 'Content-Type: application/json' \
+  -d '{"text":"WASHER DONE","seconds":60}' http://192.168.0.111/api/message</pre>
+        <p class="hint"><code>seconds</code> = show for a while, then back to the current mode (leave it out to keep showing it).
+          Step-by-step setup for a Siri Shortcut ("Hey Siri, Flappy") and Home Assistant
+          (<code>rest_command</code> + automations) is in <code>docs/integrations.md</code>.</p>
       </div>
       <div class="card">
         <h2>Log</h2>

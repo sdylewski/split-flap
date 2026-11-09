@@ -10,6 +10,7 @@
 #include "calibration.h"
 #include "config.h"
 #include "console.h"
+#include "crash.h"
 #include "display.h"
 #include "log.h"
 #include "modes.h"
@@ -94,6 +95,8 @@ static void help() {
   println(F("  show <text>           show text now (pauses the normal mode until 'resume')"));
   println(F("  text <text>           switch to text mode with this text (saved)"));
   println(F("  mode <name>           text clock date countdown trainstation randomphrase famousnumbers"));
+  println(F("                        weather bart printers"));
+  println(F("  notify <s> <text>     show text for s seconds, then back to the current mode"));
   println(F("  unit <addr> <char>    one character on one unit ('blank' for the blank flap)"));
   println(F("  ident                 every unit shows its address: 0123456789 left to right"));
   println(F("  pause / resume        stop / restart the normal mode"));
@@ -115,6 +118,7 @@ static void help() {
   println(F("  info                  firmware, memory, flash, uptime, reset reason"));
   println(F("  wifi / time           network details / clock and time zone"));
   println(F("  log <level|off>       stream the log here (serial: sets the serial log level)"));
+  println(F("  crash [clear]         last crash report (task, address, backtrace) / erase it"));
   println(F("  reboot                restart the ESP32"));
   println(F("  quit                  close telnet"));
 }
@@ -180,11 +184,13 @@ static void status(bool all) {
   }
 }
 
+// AVR reset flags. Optiboot restarts itself through the watchdog after a reset-pin/USB reset, so
+// "reset pin + watchdog" is a normal reset; "watchdog" alone means the unit really hung.
 static const char* resetCauseName(uint8_t cause) {
-  if (cause & 0x08) return "watchdog";
   if (cause & 0x04) return "BROWN-OUT";
   if (cause & 0x02) return "reset pin";
   if (cause & 0x01) return "power on";
+  if (cause & 0x08) return "WATCHDOG";
   return "?";
 }
 
@@ -407,6 +413,19 @@ void execute(const String& line) {
     } else {
       println("usage: rehome <addr|all>");
     }
+  } else if (c == "crash") {
+    if (args.a1 == "clear") {
+      crash::clear();
+      println("Crash report erased.");
+    } else {
+      println(crash::present() ? crash::summary() : String("No crash stored since the last 'crash clear'."));
+    }
+  } else if (c == "notify") {
+    long seconds;
+    if (!parseNumber(args.a1, seconds) || seconds < 1 || args.a2.length() == 0) {
+      return println("usage: notify <seconds> <text>   (shows it, then back to the current mode)");
+    }
+    modes::notify(args.a2, (uint32_t)seconds * 1000UL);
   } else if (c == "param" || c == "params") {
     paramCommand(args);
   } else if (c == "i2creset") {

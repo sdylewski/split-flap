@@ -182,9 +182,11 @@ void poll() {
   }
 
   // Web
-  std::deque<WebLine> inbox;
+  // Take the web input only if there is some (no allocation on every call)
+  static std::deque<WebLine> inbox;
+  inbox.clear();
   xSemaphoreTake(webLock, portMAX_DELAY);
-  inbox.swap(webInbox);
+  if (!webInbox.empty()) inbox.swap(webInbox);
   xSemaphoreGive(webLock);
   for (WebLine& w : inbox) {
     if (w.event == 1) {

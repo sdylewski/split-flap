@@ -16,7 +16,9 @@
 #include "app.h"
 #include "config.h"
 #include "console.h"
+#include "crash.h"
 #include "display.h"
+#include "feeds.h"
 #include "led.h"
 #include "log.h"
 #include "modes.h"
@@ -48,6 +50,7 @@ void setup() {
   LOGI("boot", "split-flap master %s (built %s %s), reset reason: %s", FIRMWARE_VERSION, __DATE__, __TIME__,
        resetReason());
 
+  crash::begin();
   settings::begin();
   units::begin();
   display::begin();
@@ -55,6 +58,7 @@ void setup() {
   net::begin();
   console::begin();
   web::begin();
+  feeds::begin();
   LOGI("boot", "ready - %d units configured, mode %s", units::count(), settings::current().mode.c_str());
 }
 

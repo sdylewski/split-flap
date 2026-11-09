@@ -1,4 +1,4 @@
-// All runtime settings, stored as one JSON file (/settings.json on LittleFS).
+// All runtime settings, stored as one JSON document in NVS (survives firmware and web-file uploads).
 //
 // Threading: the main loop owns `settings::current()`. Web handlers (another task) never touch it:
 // they take a `snapshot()`, validate a JSON patch onto that copy with `merge()`, and hand the result
@@ -15,9 +15,15 @@ struct ScheduledMessage {
   bool indefinitely = false;  // true = becomes the text-mode text; false = shown for SCHEDULED_SHOW_MS
 };
 
+struct PrinterConfig {
+  String name;  // shown on the display, e.g. "PRINTY"
+  String host;  // Klipper/Moonraker host: "printy.local" or an IP (port 7125 is added)
+};
+
 struct Settings {
   // Display
   String mode = "text";       // text | clock | date | countdown | trainstation | randomphrase | famousnumbers
+                              // | weather | bart | printers
   String text = "";           // text mode message (multi-line: words wrap, \n forces a break)
   String alignment = "left";  // left | center | right
   int speed = 80;             // 1..100 (mapped to 1..12 rpm)
@@ -59,15 +65,38 @@ struct Settings {
   // Scheduled messages
   std::vector<ScheduledMessage> scheduled;
 
+  // Wave reveal: units start one after another instead of all at once
+  int waveMs = 0;               // ms between units, 0 = off
+  String waveOrder = "left";    // left | right | center | random
+
+  // Weather mode (Open-Meteo, no account needed)
+  float weatherLat = 37.7749f;
+  float weatherLon = -122.4194f;
+  String weatherPlace = "San Francisco";
+  bool weatherFahrenheit = true;
+  int weatherSeconds = 8;       // seconds per page (now / high-low / rain)
+
+  // BART mode (api.bart.gov)
+  String bartStation = "MONT";  // station abbreviation, see https://api.bart.gov/docs/overview/abbrev.aspx
+  String bartDirection = "";    // "" = both, "n" = north, "s" = south
+  String bartKey = "MW9S-E7SL-26DU-VV8V";  // BART's public key; register your own at https://api.bart.gov/api/register.aspx
+  int bartSeconds = 6;          // seconds per departure
+
+  // 3D printers (Klipper / Moonraker): progress mode + "done" notifications
+  std::vector<PrinterConfig> printers;
+  bool printerNotify = true;
+  int printerNotifySeconds = 300;
+
   // Diagnostics
   String logLevel = "info";     // serial log level: debug | info | warn | error | off
 };
 
 namespace settings {
 
-void begin();                 // mount LittleFS, load /settings.json (defaults if missing/corrupt)
+void begin();                 // load from NVS (defaults if missing/corrupt); also mounts LittleFS
 Settings& current();          // main loop only
 Settings snapshot();          // copy for other tasks (web handlers)
+uint32_t revision();          // changes whenever the settings change (cheap check before snapshot())
 void commit(const Settings& updated);  // main loop only: replace, save, publish
 bool save();
 

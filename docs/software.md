@@ -71,13 +71,14 @@ Edit the UI in `firmware/master/web/`; `pio run -t uploadfs` (or `-e ota`) publi
 
 ### 2.5 Settings
 
-All settings are in one file on the ESP32, `/settings.json`, changed through the web UI,
+All settings are stored in the ESP32's NVS (non-volatile storage) - firmware and web-file
+uploads don't touch them - and are changed through the web UI,
 the console (`set <key> <value>`) or the API (`POST /api/settings`). Invalid values are
 rejected with a message saying what's wrong. The main keys:
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `text` | `text` `clock` `date` `countdown` `trainstation` `randomphrase` `famousnumbers` |
+| `mode` | `text` | `text` `clock` `date` `countdown` `trainstation` `randomphrase` `famousnumbers` `weather` `bart` `printers` |
 | `text` | | Text-mode message. Long text wraps onto several lines, `\n` forces a break |
 | `alignment` | `left` | `left` `center` `right` |
 | `speed` | 80 | 1-100 (sent to the units as 1-12 rpm) |
@@ -86,6 +87,8 @@ rejected with a message saying what's wrong. The main keys:
 | `timezone` | `PST8PDT,M3.2.0,M11.1.0` | POSIX TZ string (the web UI has a list) |
 | `clock24h` / `dateFormat` | false / `%a %b %d` | Clock and date format (strftime) |
 | `quietEnabled` `quietFrom` `quietTo` `quietBlank` | off, 22:00, 08:00 | No display changes during these hours |
+| `waveMs` / `waveOrder` | 0 / `left` | Wave reveal: ms between units (0 = off), `left` `right` `center` `random` |
+| weather, BART, printers | | See [integrations.md](./integrations.md) |
 | `logLevel` | `info` | Serial log level: `debug` `info` `warn` `error` `off` |
 
 ### 2.6 API
@@ -94,7 +97,7 @@ rejected with a message saying what's wrong. The main keys:
 |---|---|
 | `GET /api/state` | Live status: display, units (with diagnostics), WiFi, time |
 | `GET /api/settings` / `POST /api/settings` | Read / change settings (JSON, any subset of keys) |
-| `POST /api/message` | `{"text":"HI"}` show now; add `"at": <unix time>` (and `"indefinitely": true`) to schedule |
+| `POST /api/message` | `{"text":"HI"}` show now; `"seconds": 60` show temporarily; `"at": <unix time>` (+ `"indefinitely": true`) to schedule; `"dictated": true` cleans up Siri text |
 | `DELETE /api/scheduled?at=<unix time>` | Remove a scheduled message |
 | `POST /api/command` | `{"line":"rehome all"}` run a console command (output goes to the log) |
 | `GET /api/log?since=<seq>` | Log lines after a sequence number |
@@ -168,6 +171,11 @@ small; if it shows the one *after*, too big. One flap is about 45 steps: `offset
   magnet syncs and sync error, misses, boots, steps per turn, I2C errors.
 - **`info`**, **`wifi`**, **`time`**: firmware, memory, reset reason (crash/brown-out show up
   here), WiFi signal and disconnect reasons, clock.
+- **`crash`**: after a crash the ESP32 keeps a core dump in flash; `crash` shows the crashed task,
+  address, reason and backtrace (also logged at boot and in `/api/state`). Decode the addresses
+  with the `firmware.elf` of that build:
+  `~/.platformio/packages/toolchain-xtensa-esp-elf/bin/xtensa-esp32-elf-addr2line -pfiaC -e .pio/build/esp32/firmware.elf 0x400d1234 ...`.
+  `crash clear` erases it.
 
 ### 5.2 Status LED (ESP32 GPIO2)
 

@@ -8,7 +8,9 @@
 #include "app.h"
 #include "config.h"
 #include "console.h"
+#include "crash.h"
 #include "display.h"
+#include "feeds.h"
 #include "log.h"
 #include "modes.h"
 #include "net.h"
@@ -65,11 +67,33 @@ static void applySettingsPatch(AsyncWebServerRequest* request, JsonVariant& json
   sendOk(request);
 }
 
+// Siri / dictation gives "Hello." or "Don't panic!": drop the closing punctuation and apostrophes
+static String cleanDictation(String text) {
+  text.trim();
+  text.replace("\u2019", "");  // curly apostrophe
+  text.replace("'", "");
+  text.replace("\"", "");
+  text.replace("\u201c", "");
+  text.replace("\u201d", "");
+  while (text.length() && (text.endsWith(".") || text.endsWith("!") || text.endsWith("?") || text.endsWith(","))) {
+    text.remove(text.length() - 1);
+  }
+  return text;
+}
+
 static void postMessage(AsyncWebServerRequest* request, JsonVariant& json) {
   String text = json["text"] | "";
   int64_t at = json["at"] | (long long)0;
   bool indefinitely = json["indefinitely"] | false;
+  int seconds = json["seconds"] | 0;
+  if (json["dictated"] | false) text = cleanDictation(text);
   if (text.length() > 200) return sendError(request, 400, "text is too long (max 200)");
+  if (seconds < 0 || seconds > 86400) return sendError(request, 400, "seconds must be 0..86400");
+  if (seconds > 0 && at == 0) {
+    // Temporary: show it, then go back to whatever mode is running (notifications)
+    app::post([text, seconds]() { modes::notify(text, (uint32_t)seconds * 1000UL); });
+    return sendOk(request);
+  }
   if (at == 0) {
     app::post([text]() {
       Settings updated = settings::current();
@@ -199,6 +223,7 @@ String buildState() {
   doc["version"] = FIRMWARE_VERSION;
   doc["uptime"] = millis() / 1000;
   doc["heap"] = ESP.getFreeHeap();
+  if (crash::present()) doc["lastCrash"] = crash::summary();
 
   JsonObject wifi = doc["wifi"].to<JsonObject>();
   wifi["connected"] = net::connected();
@@ -227,6 +252,40 @@ String buildState() {
   d["idle"] = display::idle();
   d["paused"] = app::displayPaused;
   d["lastMoveMs"] = display::lastMoveMs();
+
+  feeds::Weather w = feeds::weather();
+  if (w.valid) {
+    JsonObject o = doc["weather"].to<JsonObject>();
+    o["now"] = w.now;
+    o["word"] = feeds::weatherWord(w.codeNow);
+    o["high"] = w.high;
+    o["low"] = w.low;
+    o["rain"] = w.rainChance;
+    o["ageS"] = (millis() - w.fetchedMs) / 1000;
+  }
+  feeds::Bart b = feeds::bart();
+  if (b.valid || b.error.length()) {
+    JsonObject o = doc["bart"].to<JsonObject>();
+    o["station"] = b.station;
+    o["error"] = b.error;
+    JsonArray deps = o["departures"].to<JsonArray>();
+    for (const feeds::Departure& d : b.departures) {
+      JsonObject dep = deps.add<JsonObject>();
+      dep["to"] = d.destination;
+      dep["min"] = d.minutes;
+      dep["dir"] = String(d.direction);
+    }
+  }
+  JsonArray printerList = doc["printers"].to<JsonArray>();
+  for (const feeds::Printer& p : feeds::printers()) {
+    JsonObject o = printerList.add<JsonObject>();
+    o["name"] = p.name;
+    o["reachable"] = p.reachable;
+    o["state"] = p.state;
+    o["progress"] = p.progress;
+    o["minutesLeft"] = p.minutesLeft;
+    o["file"] = p.file;
+  }
 
   JsonArray list = doc["units"].to<JsonArray>();
   for (int a = 0; a < units::count(); a++) {

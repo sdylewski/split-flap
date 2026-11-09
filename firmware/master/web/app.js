@@ -9,6 +9,9 @@ const TRAIN_LINES = {
   bart: [["bart-red", "BART Red"], ["bart-yellow", "BART Yellow"], ["bart-blue", "BART Blue"], ["bart-green", "BART Green"], ["bart-orange", "BART Orange"]],
 };
 
+// BART stations (from api.bart.gov stn.aspx?cmd=stns)
+const BART_STATIONS = [["12TH", "12th St./Oakland City Center"], ["16TH", "16th St./Mission"], ["19TH", "19th St./Oakland"], ["24TH", "24th St./Mission"], ["ANTC", "Antioch"], ["ASHB", "Ashby"], ["BALB", "Balboa Park"], ["BAYF", "Bay Fair"], ["BERY", "Berryessa/North San Jose"], ["CAST", "Castro Valley"], ["CIVC", "Civic Center/UN Plaza"], ["COLS", "Coliseum"], ["COLM", "Colma"], ["CONC", "Concord"], ["DALY", "Daly City"], ["DBRK", "Downtown Berkeley"], ["DUBL", "Dublin/Pleasanton"], ["PLZA", "El Cerrito Plaza"], ["DELN", "El Cerrito del Norte"], ["EMBR", "Embarcadero"], ["FRMT", "Fremont"], ["FTVL", "Fruitvale"], ["GLEN", "Glen Park"], ["HAYW", "Hayward"], ["LAFY", "Lafayette"], ["LAKE", "Lake Merritt"], ["MCAR", "MacArthur"], ["MLBR", "Millbrae"], ["MLPT", "Milpitas"], ["MONT", "Montgomery St."], ["NBRK", "North Berkeley"], ["NCON", "North Concord/Martinez"], ["OAKL", "Oakland International Airport (OAK)"], ["ORIN", "Orinda"], ["PCTR", "Pittsburg Center"], ["PITT", "Pittsburg/Bay Point"], ["PHIL", "Pleasant Hill/Contra Costa Centre"], ["POWL", "Powell St."], ["RICH", "Richmond"], ["ROCK", "Rockridge"], ["SBRN", "San Bruno"], ["SFIA", "San Francisco International Airport (SFO)"], ["SANL", "San Leandro"], ["SHAY", "South Hayward"], ["SSAN", "South San Francisco"], ["UCTY", "Union City"], ["WCRK", "Walnut Creek"], ["WARM", "Warm Springs/South Fremont"], ["WDUB", "West Dublin/Pleasanton"], ["WOAK", "West Oakland"]];
+
 const TIMEZONES = [
   ["America/Los_Angeles", "PST8PDT,M3.2.0,M11.1.0"],
   ["America/Denver", "MST7MDT,M3.2.0,M11.1.0"],
@@ -26,6 +29,7 @@ const TIMEZONES = [
 ];
 
 let settings = null;
+let weatherPick = null;  // {lat, lon, place} chosen in the city search
 let selectedMode = "text";
 let selectedAlign = "left";
 let lastState = null;
@@ -130,6 +134,24 @@ function fillForm(s) {
   $("unitCount").value = s.unitCount;
   $("logLevel").value = s.logLevel;
   $("timezone").value = s.timezone;
+  // Weather
+  weatherPick = null;
+  $("weatherWhere").textContent = `Now: ${s.weatherPlace} (${s.weatherLat.toFixed(3)}, ${s.weatherLon.toFixed(3)})`;
+  $("weatherFahrenheit").checked = s.weatherFahrenheit;
+  $("weatherSeconds").value = s.weatherSeconds;
+  // BART
+  $("bartStation").value = s.bartStation;
+  $("bartDirection").value = s.bartDirection;
+  $("bartSeconds").value = s.bartSeconds;
+  $("bartKey").value = s.bartKey;
+  // Printers
+  renderPrinters(s.printers || []);
+  $("printerNotify").checked = s.printerNotify;
+  $("printerNotifySeconds").value = s.printerNotifySeconds;
+  // Wave
+  $("waveOrder").value = s.waveMs > 0 ? s.waveOrder : "off";
+  $("waveMs").value = s.waveMs > 0 ? s.waveMs : 150;
+  $("waveMsValue").textContent = `${$("waveMs").value} ms`;
   const known = TIMEZONES.find(([name, tz]) => tz === s.timezone);
   $("timezoneName").value = known ? known[1] : "custom";
   renderSchedule(s.scheduled || []);
@@ -156,7 +178,9 @@ $("text").addEventListener("input", () => {
 // ---- Display tab: apply --------------------------------------------------------------------
 $("btnApply").addEventListener("click", () => {
   const n = (id) => Number($(id).value);
-  const patch = { mode: selectedMode, alignment: selectedAlign, speed: n("speed"), lineSeconds: n("lineSeconds") };
+  const wave = $("waveOrder").value;
+  const patch = { mode: selectedMode, alignment: selectedAlign, speed: n("speed"), lineSeconds: n("lineSeconds"),
+    waveMs: wave === "off" ? 0 : n("waveMs"), waveOrder: wave === "off" ? "left" : wave };
   switch (selectedMode) {
     case "text": patch.text = $("text").value.toUpperCase(); break;
     case "clock": patch.clock24h = $("clock24h").checked; break;
@@ -176,12 +200,83 @@ $("btnApply").addEventListener("click", () => {
       Object.assign(patch, { phrases: $("phrases").value.toUpperCase(), phraseMinSeconds: n("phraseMinSeconds"),
         phraseMaxSeconds: n("phraseMaxSeconds") });
       break;
+    case "weather":
+      Object.assign(patch, { weatherFahrenheit: $("weatherFahrenheit").checked, weatherSeconds: n("weatherSeconds") });
+      if (weatherPick) Object.assign(patch, { weatherLat: weatherPick.lat, weatherLon: weatherPick.lon, weatherPlace: weatherPick.place });
+      break;
+    case "bart":
+      Object.assign(patch, { bartStation: $("bartStation").value, bartDirection: $("bartDirection").value,
+        bartSeconds: n("bartSeconds"), bartKey: $("bartKey").value.trim() });
+      break;
+    case "printers":
+      Object.assign(patch, { printerNotify: $("printerNotify").checked, printerNotifySeconds: n("printerNotifySeconds") });
+      break;
     case "famousnumbers":
       Object.assign(patch, { numbers: $("numbers").value.toUpperCase(), numberMinSeconds: n("numberMinSeconds"),
         numberMaxSeconds: n("numberMaxSeconds"), numberNameSeconds: n("numberNameSeconds") });
       break;
   }
   save(patch, $("applyStatus"));
+});
+
+// ---- Weather / BART / printers panels --------------------------------------------------------
+$("bartStation").innerHTML = BART_STATIONS.map(([code, name]) => `<option value="${code}">${name} (${code})</option>`).join("");
+$("waveMs").addEventListener("input", () => { $("waveMsValue").textContent = `${$("waveMs").value} ms`; });
+
+let searchTimer = null;
+$("weatherSearch").addEventListener("input", () => {
+  clearTimeout(searchTimer);
+  const name = $("weatherSearch").value.trim();
+  if (name.length < 2) return;
+  searchTimer = setTimeout(async () => {
+    try {
+      // Open-Meteo's free geocoding, called from the browser (the ESP32 isn't involved)
+      const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=8&name=${encodeURIComponent(name)}`);
+      const data = await r.json();
+      const results = data.results || [];
+      $("weatherResults").innerHTML = results.length
+        ? results.map((p, i) => `<option value="${i}">${p.name}, ${p.admin1 || ""} ${p.country_code || ""}</option>`).join("")
+        : '<option value="">No match</option>';
+      $("weatherResults")._results = results;
+      if (results.length) pickPlace(0);
+    } catch (e) {
+      $("weatherWhere").textContent = "City search needs internet access from this browser.";
+    }
+  }, 400);
+});
+$("weatherResults").addEventListener("change", () => pickPlace(Number($("weatherResults").value)));
+function pickPlace(i) {
+  const p = ($("weatherResults")._results || [])[i];
+  if (!p) return;
+  weatherPick = { lat: p.latitude, lon: p.longitude, place: p.name };
+  $("weatherWhere").textContent = `Will use: ${p.name} (${p.latitude.toFixed(3)}, ${p.longitude.toFixed(3)}) - press "Show on display"`;
+}
+
+function renderPrinters(list) {
+  const ul = $("printerList");
+  ul.innerHTML = list.length ? "" : '<li class="empty">No printers yet</li>';
+  list.forEach((p, i) => {
+    const li = document.createElement("li");
+    li.innerHTML = "<div><strong></strong><div class='when'></div></div>";
+    li.querySelector("strong").textContent = p.name;
+    li.querySelector(".when").textContent = p.host;
+    const remove = document.createElement("button");
+    remove.textContent = "Remove";
+    remove.addEventListener("click", () => {
+      const printers = settings.printers.filter((_, j) => j !== i);
+      save({ printers }, $("applyStatus"));
+    });
+    li.appendChild(remove);
+    ul.appendChild(li);
+  });
+}
+$("btnAddPrinter").addEventListener("click", () => {
+  const name = $("printerName").value.trim().toUpperCase();
+  const host = $("printerHost").value.trim();
+  if (!name || !host) return flash($("applyStatus"), "Enter a name and a host", false);
+  save({ printers: [...(settings.printers || []), { name, host }] }, $("applyStatus"));
+  $("printerName").value = "";
+  $("printerHost").value = "";
 });
 
 // ---- Schedule tab --------------------------------------------------------------------------
@@ -322,6 +417,10 @@ function renderDevice(state) {
     ["Time", state.time.valid ? `${state.time.local} (${state.time.zone})` : "waiting for NTP"],
     ["Last update", `${state.display.lastMoveMs} ms to settle`],
   ];
+  (state.printers || []).forEach((p) => facts.push([`Printer ${p.name}`, !p.reachable ? "not reachable"
+    : p.state === "printing" ? `printing ${Math.round(p.progress * 100)} %${p.minutesLeft >= 0 ? `, ${p.minutesLeft} min left` : ""}` : p.state]));
+  if (state.weather) facts.push(["Weather", `${Math.round(state.weather.now)}° ${state.weather.word}, high ${Math.round(state.weather.high)}, low ${Math.round(state.weather.low)}, rain ${state.weather.rain} %`]);
+  if (state.bart) facts.push([`BART ${state.bart.station}`, state.bart.error || state.bart.departures.slice(0, 4).map((d) => `${d.to} ${d.min || "now"}`).join(", ")]);
   $("deviceInfo").innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }
 

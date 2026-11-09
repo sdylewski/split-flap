@@ -59,6 +59,7 @@ below and then dive into the topic that is most relevant for you.
 | [`esp32.md`](./esp32.md) | Wiring the ESP32 master into the ESP-01 header, power |
 | [`software.md`](./software.md) | Building and flashing, web UI, settings, API, LED codes, troubleshooting |
 | [`console.md`](./console.md) | Console commands, calibration (`cal`), reading the unit diagnostics |
+| [`integrations.md`](./integrations.md) | Weather, BART departures, 3D printers, wave reveal, Home Assistant, Siri |
 | [`interactive-calibration.md`](./interactive-calibration.md) | Legacy USB calibration tool |
 | [`SplitFlapInstructions.md`](./SplitFlapInstructions.md) | Legacy PDF content converted to Markdown for archival/reference |
 

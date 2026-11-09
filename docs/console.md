@@ -19,10 +19,11 @@ updates, so a command can wait a few seconds while flaps are still moving.
 | **Display** | |
 | `show <text>` | Show text now, left aligned. Pauses the normal mode until `resume` |
 | `text <text>` | Switch to text mode with this text (saved) |
-| `mode <name>` | `text` `clock` `date` `countdown` `trainstation` `randomphrase` `famousnumbers` |
+| `mode <name>` | `text` `clock` `date` `countdown` `trainstation` `randomphrase` `famousnumbers` `weather` `bart` `printers` |
 | `unit <addr> <char>` | One character on one unit (`blank` for the blank flap) |
 | `ident` | Every unit shows its own address: `0123456789` left to right |
 | `pause` / `resume` | Stop / restart the normal mode |
+| `notify <seconds> <text>` | Show text for a while, then back to the current mode |
 | **Units** | |
 | `status [all]` | Status and firmware of each unit (`all` checks addresses 0-15) |
 | `units` | Diagnostics table (see below) |
@@ -43,6 +44,7 @@ updates, so a command can wait a few seconds while flaps are still moving.
 | `info` | Firmware, uptime, reset reason, memory, flash |
 | `wifi` / `time` | WiFi details and disconnect reasons / clock and time zone |
 | `log <level\|off>` | Stream the log into this console (`debug` `info` `warn` `error`). On serial it sets the serial log level |
+| `crash [clear]` | Last crash report (task, address, reason, backtrace) / erase it |
 | `reboot` | Restart the ESP32 |
 | `quit` | Close a telnet session |
 
