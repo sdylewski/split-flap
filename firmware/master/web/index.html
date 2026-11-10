@@ -57,15 +57,22 @@
         </div>
         <div class="mode-panel" data-panel="clock">
           <div class="row">
-            <div><label class="check"><input type="checkbox" id="clock24h"> 24-hour clock</label></div>
-            <div><label class="check"><input type="checkbox" id="clockLeadingZero"> Leading zeros (06:55)</label></div>
+            <div><label for="clockHours">Hours</label>
+              <select id="clockHours">
+                <option value="24">24-hour (15:45)</option>
+                <option value="12">12-hour (3:45)</option>
+                <option value="12ampm">12-hour with AM/PM (3:45PM)</option>
+              </select></div>
             <div><label for="clockDay">Day in front</label>
               <select id="clockDay">
-                <option value="none">None (06:55)</option>
-                <option value="number">Day of the month (05  06:55)</option>
-                <option value="weekday">Weekday (MON  06:55)</option>
+                <option value="none">None</option>
+                <option value="number">Day of the month (28)</option>
+                <option value="ordinal">Day of the month (28TH)</option>
+                <option value="weekday">Weekday (MON)</option>
               </select></div>
+            <div><label class="check"><input type="checkbox" id="clockLeadingZero"> Leading zeros (03:45, 05)</label></div>
           </div>
+          <p class="hint">Right now this shows: <code id="clockPreview"></code></p>
         </div>
         <div class="mode-panel" data-panel="date">
           <label for="dateFormat">Format</label>

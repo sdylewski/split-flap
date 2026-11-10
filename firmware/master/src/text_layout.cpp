@@ -147,23 +147,38 @@ bool inWindow(int now, int from, int to) {
   return now >= from || now < to;  // wraps past midnight
 }
 
-std::string clockText(int hour, int minute, int monthDay, int weekDay, bool h24, bool leadingZero,
+std::string clockText(int hour, int minute, int monthDay, int weekDay, const std::string& hours, bool leadingZero,
                       const std::string& day, int width) {
   static const char* WEEKDAYS[] = {"SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"};
+  bool h24 = hours == "24";
+  bool ampm = hours == "12ampm";
   char time[12];
   int h = h24 ? hour : (hour % 12 == 0 ? 12 : hour % 12);
-  snprintf(time, sizeof(time), leadingZero ? "%02d:%02d%s" : "%d:%02d%s", h, minute, h24 ? "" : (hour < 12 ? "AM" : "PM"));
+  snprintf(time, sizeof(time), leadingZero ? "%02d:%02d%s" : "%d:%02d%s", h, minute,
+           ampm ? (hour < 12 ? "AM" : "PM") : "");
+
   std::string prefix;
+  const char* gap = " ";
   if (day == "number") {
     char d[4];
     snprintf(d, sizeof(d), leadingZero ? "%02d" : "%d", monthDay);
     prefix = d;
+    gap = "  ";  // "05  06:55": a bare number needs more room to read as a date
+  } else if (day == "ordinal") {
+    int lastTwo = monthDay % 100;
+    const char* ending = (lastTwo >= 11 && lastTwo <= 13) ? "TH"
+                         : monthDay % 10 == 1           ? "ST"
+                         : monthDay % 10 == 2           ? "ND"
+                         : monthDay % 10 == 3           ? "RD"
+                                                        : "TH";
+    prefix = std::to_string(monthDay) + ending;  // "28TH", "1ST"
   } else if (day == "weekday" && weekDay >= 0 && weekDay < 7) {
     prefix = WEEKDAYS[weekDay];
   }
   if (prefix.empty()) return time;
-  for (const char* gap : {"  ", " ", ""}) {
-    std::string text = prefix + gap + time;
+  // Preferred gap, then tighter until it fits the display
+  for (const char* g : {gap, " ", ""}) {
+    std::string text = prefix + g + time;
     if ((int)text.size() <= width) return text;
   }
   return prefix + time;

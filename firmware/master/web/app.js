@@ -128,9 +128,10 @@ function fillForm(s) {
   setMode(s.mode);
   setAlign(s.alignment);
   $("text").value = s.text;
-  $("clock24h").checked = s.clock24h;
+  $("clockHours").value = s.clockHours;
   $("clockLeadingZero").checked = s.clockLeadingZero;
   $("clockDay").value = s.clockDay;
+  updateClockPreview();
   $("dateFormat").value = s.dateFormat;
   $("countdownDate").value = toDateInput(s.countdownTo);
   $("trainType").value = s.trainType === "bart" ? "line" : s.trainType;  // "bart" = older settings
@@ -185,6 +186,33 @@ function fillForm(s) {
   renderPopups(s.sources || {});
 }
 
+// Same rules as layout::clockText() in the firmware (text_layout.cpp)
+function clockText(date, hours, zero, day, width) {
+  const h24 = hours === "24";
+  const h = h24 ? date.getHours() : (date.getHours() % 12 || 12);
+  const pad = (n) => (zero ? String(n).padStart(2, "0") : String(n));
+  const time = `${pad(h)}:${String(date.getMinutes()).padStart(2, "0")}${hours === "12ampm" ? (date.getHours() < 12 ? "AM" : "PM") : ""}`;
+  const d = date.getDate();
+  let prefix = "";
+  let gap = " ";
+  if (day === "number") { prefix = pad(d); gap = "  "; }
+  if (day === "ordinal") {
+    const ending = d % 100 >= 11 && d % 100 <= 13 ? "TH" : ({ 1: "ST", 2: "ND", 3: "RD" }[d % 10] || "TH");
+    prefix = `${d}${ending}`;
+  }
+  if (day === "weekday") prefix = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"][date.getDay()];
+  if (!prefix) return time;
+  for (const g of [gap, " ", ""]) if ((prefix + g + time).length <= width) return prefix + g + time;
+  return prefix + time;
+}
+
+function updateClockPreview() {
+  const width = settings ? settings.unitCount : 10;
+  const text = clockText(new Date(), $("clockHours").value, $("clockLeadingZero").checked, $("clockDay").value, width);
+  $("clockPreview").textContent = `[${text.padEnd(width)}]`;
+}
+["clockHours", "clockDay", "clockLeadingZero"].forEach((id) => $(id).addEventListener("change", updateClockPreview));
+
 async function loadSettings() {
   try {
     settings = await api("/api/settings");
@@ -211,7 +239,7 @@ $("btnApply").addEventListener("click", () => {
   switch (selectedMode) {
     case "text": patch.text = $("text").value.toUpperCase(); break;
     case "clock":
-      Object.assign(patch, { clock24h: $("clock24h").checked, clockLeadingZero: $("clockLeadingZero").checked,
+      Object.assign(patch, { clockHours: $("clockHours").value, clockLeadingZero: $("clockLeadingZero").checked,
         clockDay: $("clockDay").value });
       break;
     case "date": patch.dateFormat = $("dateFormat").value; break;

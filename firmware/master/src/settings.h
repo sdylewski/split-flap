@@ -65,8 +65,8 @@ struct Settings {
   // Time
   String timezone = "PST8PDT,M3.2.0,M11.1.0";  // POSIX TZ string
   String timezoneName = "America/Los_Angeles"; // label for the UI
-  bool clock24h = false;
-  String clockDay = "none";     // none | number (day of month: "05  06:55") | weekday ("MON 06:55")
+  String clockHours = "12ampm"; // 24 ("15:45") | 12 ("3:45") | 12ampm ("3:45PM")
+  String clockDay = "none";     // none | number ("05  06:55") | ordinal ("28TH 12:15") | weekday ("MON 3:45")
   bool clockLeadingZero = true; // "06:55" vs "6:55"
   String dateFormat = "%a %b %d";              // strftime, e.g. "SUN NOV 08"
 

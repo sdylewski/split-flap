@@ -143,16 +143,21 @@ void test_content_fits_the_flaps() {
 }
 
 void test_clock_text() {
-  // hour, minute, day of month, weekday, 24h, leading zero, day, width
-  TEST_ASSERT_EQUAL_STRING("06:55", clockText(6, 55, 5, 1, true, true, "none", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("6:55", clockText(6, 55, 5, 1, true, false, "none", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("05  06:55", clockText(6, 55, 5, 1, true, true, "number", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("5  6:55", clockText(6, 55, 5, 1, true, false, "number", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("MON  06:55", clockText(6, 55, 5, 1, true, true, "weekday", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("06:55PM", clockText(18, 55, 5, 1, false, true, "none", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("12:05AM", clockText(0, 5, 5, 1, false, true, "none", 10).c_str());
-  TEST_ASSERT_EQUAL_STRING("05 06:55PM", clockText(18, 55, 5, 1, false, true, "number", 10).c_str());  // 1 space fits
-  TEST_ASSERT_EQUAL_STRING("MON6:55PM", clockText(18, 55, 5, 1, false, false, "weekday", 9).c_str());
+  // hour, minute, day of month, weekday (1 = Monday), hours, leading zero, day, width
+  TEST_ASSERT_EQUAL_STRING("15:45", clockText(15, 45, 28, 1, "24", true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("06:55", clockText(6, 55, 5, 1, "24", true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("3:45", clockText(15, 45, 28, 1, "12", false, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("3:45PM", clockText(15, 45, 28, 1, "12ampm", false, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("12:05AM", clockText(0, 5, 5, 1, "12ampm", true, "none", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("MON 3:45", clockText(15, 45, 28, 1, "12", false, "weekday", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("MON 3:45PM", clockText(15, 45, 28, 1, "12ampm", false, "weekday", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("28TH 12:15", clockText(12, 15, 28, 1, "12", false, "ordinal", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("1ST 9:05", clockText(9, 5, 1, 1, "12", false, "ordinal", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("12TH 9:05", clockText(9, 5, 12, 1, "12", false, "ordinal", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("23RD 9:05", clockText(9, 5, 23, 1, "12", false, "ordinal", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("05  06:55", clockText(6, 55, 5, 1, "24", true, "number", 10).c_str());
+  TEST_ASSERT_EQUAL_STRING("05 06:55PM", clockText(18, 55, 5, 1, "12ampm", true, "number", 10).c_str());  // tighter gap
+  TEST_ASSERT_EQUAL_STRING("28TH3:45PM", clockText(15, 45, 28, 1, "12ampm", false, "ordinal", 10).c_str());
 }
 
 int main() {

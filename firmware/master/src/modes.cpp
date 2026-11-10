@@ -82,7 +82,7 @@ static String fit(const String& a, const String& b) {
 static void runClock(const Settings& s) {
   struct tm t;
   if (!net::localTime(t)) return display::show("NO TIME");
-  display::show(layout::clockText(t.tm_hour, t.tm_min, t.tm_mday, t.tm_wday, s.clock24h, s.clockLeadingZero,
+  display::show(layout::clockText(t.tm_hour, t.tm_min, t.tm_mday, t.tm_wday, s.clockHours.c_str(), s.clockLeadingZero,
                                   s.clockDay.c_str(), units::count())
                     .c_str());
 }

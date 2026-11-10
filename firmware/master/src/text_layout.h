@@ -28,11 +28,12 @@ int parseHHMM(const std::string& text);
 // The end minute is exclusive.
 bool inWindow(int nowMinutes, int fromMinutes, int toMinutes);
 
-// Clock text: "06:55", "6:55PM", "05  06:55", "MON 06:55", ...
-//   day: "none" | "number" (day of the month) | "weekday" (SUN..SAT)
+// Clock text: "15:45", "3:45", "3:45PM", "05  06:55", "28TH 12:15", "MON 3:45", ...
+//   hours: "24" | "12" (no AM/PM) | "12ampm"
 //   leadingZero: "06:55" / "05" vs "6:55" / "5"
-// Day and time are separated by two spaces, or fewer if it wouldn't fit `width` flaps.
-std::string clockText(int hour, int minute, int monthDay, int weekDay, bool h24, bool leadingZero,
+//   day: "none" | "number" ("28", two spaces after) | "ordinal" ("28TH") | "weekday" ("MON")
+// The gap after the day shrinks if the text wouldn't fit `width` flaps.
+std::string clockText(int hour, int minute, int monthDay, int weekDay, const std::string& hours, bool leadingZero,
                       const std::string& day, int width);
 
 // Days left until a unix timestamp, rounded up, never negative (countdown mode).
