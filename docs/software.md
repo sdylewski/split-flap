@@ -68,6 +68,20 @@ The display pauses during an update (LED solid on) and reboots when it's done.
 - **Console** – the same command console as telnet/serial, in the browser.
 - **System** – firmware, memory, WiFi, time zone, unit count, log level, live log, reboot.
 
+Screenshots:
+
+| Tab / panel | Screenshot |
+|---|---|
+| Display, clock | [display-clock.png](screenshots/display-clock.png) |
+| Display, train station line with station list | [display-trainstation.png](screenshots/display-trainstation.png) |
+| Display, famous numbers (editable lists) | [display-famousnumbers.png](screenshots/display-famousnumbers.png) |
+| Display, phrases | [display-randomphrase.png](screenshots/display-randomphrase.png) |
+| Pop-ups | [popups.png](screenshots/popups.png) |
+| Schedule (messages, quiet hours) | [schedule.png](screenshots/schedule.png) |
+| Units | [units.png](screenshots/units.png) |
+| System | [system.png](screenshots/system.png) |
+| Phone width | [mobile-display.png](screenshots/mobile-display.png) |
+
 Edit the UI in `firmware/master/web/`; `pio run -t uploadfs` (or `-e ota`) publishes it.
 
 ### 2.5 Settings

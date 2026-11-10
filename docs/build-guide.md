@@ -115,7 +115,7 @@ a short blip every 3 s = running, 3 blinks = a unit is missing
 
 Open **http://flappy.local** in a browser.
 
-<!-- PHOTO: images/build/web-ui.png - the web UI's Display tab -->
+![The web UI's Display tab](screenshots/display-clock.png)
 
 ## 5. Flash the units
 

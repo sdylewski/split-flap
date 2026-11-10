@@ -9,6 +9,8 @@ the API (`POST /api/settings`, see [software.md](./software.md#26-api)).
 
 ## Base mode and pop-ups
 
+![The Pop-ups tab](screenshots/popups.png)
+
 The display always has a **base mode** - clock, text, weather, ... (`mode`) - and **pop-ups** that
 take over for a while and then hand the display back. The clock keeps the display most of the
 time; "PRINTY DONE" still gets through whenever it happens.
@@ -59,6 +61,8 @@ doesn't lose it. In the API: `{"text": "...", "at": <unix time>, "showSeconds": 
 
 ## Weather
 
+![The Weather panel](screenshots/display-weather.png)
+
 Mode `weather`. Data from [Open-Meteo](https://open-meteo.com) (free, no account), refreshed every
 10 minutes while the mode is on. It cycles three pages:
 
@@ -73,6 +77,8 @@ display**. Settings: `weatherLat`, `weatherLon`, `weatherPlace`, `weatherFahrenh
 `weatherSeconds` (seconds per page).
 
 ## BART departures
+
+![The BART panel](screenshots/display-bart.png)
 
 Mode `bart`. Real-time departures from the
 [BART API](https://api.bart.gov/docs/overview/index.aspx), refreshed every 30 seconds while the
@@ -93,6 +99,8 @@ The destination is BART's four-letter station code
 | `bartKey` | BART's public key | Works for everyone. You can [register your own key](https://api.bart.gov/api/register.aspx) |
 
 ## 3D printers (Klipper / Moonraker)
+
+![The Printers panel](screenshots/display-printers.png)
 
 Add printers in the Printers panel: a short **name** for the display (up to 10 characters) and the
 **host** (`printy.local`, `voron.local` or an IP; port 7125 is assumed). The master checks them

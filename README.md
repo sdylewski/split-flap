@@ -35,6 +35,15 @@ The full comparison - including what was *removed* (ESP-01S support in the new f
 setup portal) and what has and hasn't been tested on hardware - is in
 **[docs/whats-different.md](./docs/whats-different.md)**.
 
+## The web UI
+
+![The Display tab in clock mode: the board mirrors the real flaps](./docs/screenshots/display-clock.png)
+
+![The Pop-ups tab: what may interrupt the base mode, and when](./docs/screenshots/popups.png)
+
+More screenshots: [docs/screenshots](./docs/screenshots) (weather, BART, train lines, printers,
+famous numbers, schedule, units, console, system, and a phone-width view).
+
 ## Build it
 
 Starting from scratch: print the parts, build the units, then follow

@@ -12,6 +12,8 @@ in three places at once, with the same commands everywhere:
 Replies go to the console that typed the command. Commands run one at a time between display
 updates, so a command can wait a few seconds while flaps are still moving.
 
+![The Console tab running `units`](screenshots/console.png)
+
 ## Commands
 
 | Command | What it does |
@@ -54,6 +56,10 @@ Run `ident`. Reading left to right the display should show `0123456789`. If not,
 switches don't match its position: the leftmost unit must be address 0. `resume` when done.
 
 ## Reading `units`
+
+![The Units tab](screenshots/units.png)
+
+The same table is in the console (`units`):
 
 ```
 addr fw     status       letter  vcc(min)    syncs miss  err(max) boots steps reset     up     i2c-err
