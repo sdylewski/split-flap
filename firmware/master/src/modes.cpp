@@ -19,15 +19,14 @@ namespace modes {
 // ---- State ---------------------------------------------------------------------------------
 static String activeMode;
 static uint32_t lastTick = 0;
-static uint32_t nextChangeMs = 0;  // when the rotating modes pick the next item
+static bool started = false;       // rotating modes: the first item has been shown
+static uint32_t holdMs = 0;        // how long the current item stays after it has landed
 static int currentItem = -1;
 static int lineStop = -1;
 static bool showingName = false;
-static uint32_t nameAtMs = 0;
 
 static bool inQuiet = false;
 static size_t pageIndex = 0;       // weather / bart / printers: which page is showing
-static uint32_t pageUntil = 0;
 
 // ---- Helpers -------------------------------------------------------------------------------
 static std::vector<String> splitList(const String& list) {
@@ -58,19 +57,22 @@ static int pickOther(int count, int current) {
   return next;
 }
 
-static bool timeDue(uint32_t at) { return (int32_t)(millis() - at) >= 0; }
+
+// The current text has fully landed (every line of it) and been readable for at least `ms`.
+// All "seconds" settings of the rotating modes count from here, not from when the flaps started.
+static bool shownFor(uint32_t ms) {
+  uint32_t since = display::idleSinceMs();
+  return since != 0 && millis() - since >= ms;
+}
 
 // Cycle through pages, each shown for `seconds` (times its number of lines if it wraps).
 // Called every tick with fresh pages, so changing data (minutes, temperature) updates in place.
 static void runPages(const std::vector<String>& pages, int seconds) {
   if (pages.empty()) return;
   if (pageIndex >= pages.size()) pageIndex = 0;
-  if (pageUntil == 0 || timeDue(pageUntil)) {
-    if (pageUntil != 0) pageIndex = (pageIndex + 1) % pages.size();
-    size_t lines = layout::splitLines(pages[pageIndex].c_str(), units::count()).size();
-    pageUntil = millis() + (uint32_t)seconds * 1000UL * (lines < 1 ? 1 : lines);
-  }
-  display::show(pages[pageIndex]);
+  if (started && shownFor((uint32_t)seconds * 1000UL)) pageIndex = (pageIndex + 1) % pages.size();
+  started = true;
+  display::show(pages[pageIndex]);  // every tick: changing data (minutes, temperature) updates in place
 }
 
 // "a b" if it fits on the display, otherwise on two lines
@@ -114,8 +116,8 @@ static const content::TrainLine* findLine(const String& id) {
 }
 
 static void runTrainStation(const Settings& s) {
-  if (!timeDue(nextChangeMs)) return;
-  nextChangeMs = millis() + (uint32_t)s.trainSeconds * 1000UL;
+  if (started && !shownFor((uint32_t)s.trainSeconds * 1000UL)) return;
+  started = true;
   if (s.trainType == "random") {
     std::vector<String> custom = splitList(s.trainStations);
     int count = custom.empty() ? content::RANDOM_STATION_COUNT : (int)custom.size();
@@ -132,8 +134,9 @@ static void runTrainStation(const Settings& s) {
 static void runRandomPhrase(const Settings& s) {
   std::vector<String> phrases = splitList(s.phrases);
   if (phrases.empty()) return display::show("NO PHRASES");
-  if (!timeDue(nextChangeMs)) return;
-  nextChangeMs = millis() + randomDelayMs(s.phraseMinSeconds, s.phraseMaxSeconds);
+  if (started && !shownFor(holdMs)) return;  // min..max seconds after the whole phrase has landed
+  started = true;
+  holdMs = randomDelayMs(s.phraseMinSeconds, s.phraseMaxSeconds);
   currentItem = pickOther(phrases.size(), currentItem);
   display::show(phrases[currentItem]);
 }
@@ -145,15 +148,20 @@ static void runFamousNumbers(const Settings& s) {
   auto number = [&](int i) { return parts.size() >= 2 ? parts[i * 2] : String(content::NUMBERS[i][0]); };
   auto name = [&](int i) { return parts.size() >= 2 ? parts[i * 2 + 1] : String(content::NUMBERS[i][1]); };
 
-  if (currentItem >= 0 && currentItem < count && !showingName && timeDue(nameAtMs)) {
-    showingName = true;
-    display::show(name(currentItem));
+  // number -> (name seconds after it landed) name -> (min..max seconds after that landed) next number
+  if (started && currentItem >= 0 && currentItem < count) {
+    if (!showingName) {
+      if (!shownFor((uint32_t)s.numberNameSeconds * 1000UL)) return;
+      showingName = true;
+      holdMs = randomDelayMs(s.numberMinSeconds, s.numberMaxSeconds);
+      display::show(name(currentItem));
+      return;
+    }
+    if (!shownFor(holdMs)) return;
   }
-  if (!timeDue(nextChangeMs)) return;
-  nextChangeMs = millis() + randomDelayMs(s.numberMinSeconds, s.numberMaxSeconds);
+  started = true;
   currentItem = pickOther(count, currentItem);
   showingName = false;
-  nameAtMs = millis() + (uint32_t)s.numberNameSeconds * 1000UL;
   display::show(number(currentItem));
 }
 
@@ -223,7 +231,8 @@ struct Popup {
   bool active = false;
   int source = -1;
   int priority = 0;
-  uint32_t until = 0;
+  uint32_t durationMs = 0;
+  uint32_t shownAt = 0;  // when it had fully landed (0 = still flapping in); the duration counts from here
   String text;  // fixed text ("PRINTY DONE"), or empty ...
   String mode;  // ... and a mode to run instead ("weather", "bart", ...)
 };
@@ -233,13 +242,12 @@ static int timerSlot[SRC_COUNT];  // minute-of-day slot already handled per sour
 static String lastTrainKey;
 
 static void resetRenderState() {
-  nextChangeMs = millis();
+  started = false;
+  holdMs = 0;
   currentItem = -1;
   lineStop = -1;
   showingName = false;
-  nameAtMs = 0;
   pageIndex = 0;
-  pageUntil = 0;
 }
 
 void restart() {
@@ -262,7 +270,8 @@ static bool showPopup(int source, const String& text, const String& mode, uint32
   current.active = true;
   current.source = source;
   current.priority = priority;
-  current.until = millis() + durationMs;
+  current.durationMs = durationMs;
+  current.shownAt = 0;
   current.text = text;
   current.mode = mode;
   resetRenderState();
@@ -432,7 +441,7 @@ void loop() {
 
   // A pop-up is up: show it until its time is over (and its last update has landed)
   if (current.active) {
-    if (timeDue(current.until) && display::idle()) {
+    if (current.shownAt != 0 && millis() - current.shownAt >= current.durationMs && display::idle()) {
       LOGD("popup", "%s ended", SOURCE_IDS[current.source]);
       current.active = false;
       lastPopupEnd = millis();
@@ -440,6 +449,7 @@ void loop() {
     } else {
       if (current.text.length()) display::show(current.text);
       else renderMode(current.mode, s);
+      if (current.shownAt == 0 && display::idle()) current.shownAt = millis();  // landed (or nothing to change)
       return;
     }
   }
@@ -460,7 +470,8 @@ String status() {
   if (app::displayPaused) return "paused (console)";
   if (inQuiet) return "quiet hours until " + s.quietTo;
   if (current.active) {
-    long left = (long)(current.until - millis()) / 1000;
+    long left = current.shownAt ? (long)(current.durationMs - (millis() - current.shownAt)) / 1000
+                                : (long)(current.durationMs / 1000);
     return String("pop-up: ") + SOURCE_IDS[current.source] + " (" +
            (current.text.length() ? current.text : current.mode) + ", " + String(left < 0 ? 0 : left) + "s left)";
   }

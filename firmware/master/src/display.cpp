@@ -17,6 +17,7 @@ namespace display {
 enum class State { Idle, WaitBefore, Write, WaitStart, WaitMoving, Hold };
 
 static State state = State::Idle;
+static uint32_t idleAt = 1;  // millis() when the display last became idle (0 = busy)
 static String requested;
 static String requestedAlign;
 static std::vector<std::string> lines;
@@ -34,6 +35,7 @@ static void enter(State next) {
 }
 
 void begin() {
+  idleAt = millis() | 1;
   int n = units::count();
   onFlaps = String(std::string(n, ' ').c_str());
 }
@@ -201,6 +203,7 @@ void loop() {
         enter(State::Hold);
       } else {
         enter(State::Idle);
+        idleAt = millis() | 1;  // never 0: 0 means busy
       }
       break;
     }
@@ -215,6 +218,7 @@ void loop() {
 }
 
 bool idle() { return state == State::Idle; }
+uint32_t idleSinceMs() { return state == State::Idle ? idleAt : 0; }
 String text() { return requested; }
 String line() { return onFlaps; }
 int lineIndex() { return (int)index; }

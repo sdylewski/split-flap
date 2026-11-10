@@ -25,6 +25,9 @@ Each pop-up source has a rule (Pop-ups tab, or `sources.<id>` in the settings):
 | `days` | Timer weekdays, bit mask: 1 = Sunday, 2 = Monday, ... 64 = Saturday (127 = every day, 62 = Mon-Fri) |
 | `trainMinutes` | BART only: pop up when a train is exactly this many minutes away (0 = off) |
 
+**All durations count from when the flaps have stopped** and the text is readable - a pop-up's
+`showSeconds`, and in the modes the seconds per phrase, station, number/name and page.
+
 A pop-up that isn't allowed in (something equal or more important is up) is dropped, not
 queued. A timer pop-up that's blocked keeps trying for 5 minutes into its slot.
 

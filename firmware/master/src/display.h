@@ -18,6 +18,7 @@ void show(const String& text, bool force = false, const char* alignment = nullpt
 void redraw();
 
 bool idle();                   // nothing left to write or wait for
+uint32_t idleSinceMs();        // millis() when the last text fully landed (0 while busy)
 String text();                 // text requested last
 String line();                 // the line currently on the flaps (exactly unitCount characters)
 int lineIndex();
