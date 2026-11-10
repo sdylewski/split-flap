@@ -143,7 +143,8 @@ td button { padding: 4px 10px; font-size: 13px; }
   .terminal { height: 360px; }
 }
 
-#popupTable input[type=number] { width: 72px; padding: 5px 6px; }
+#popupTable input[type=number] { width: 60px; padding: 5px 4px; }
+#popupTable th, #popupTable td { padding: 6px 5px; }
 #popupTable input[type=time] { width: 88px; padding: 4px 4px; font-size: 13px; }
 #popupTable td.hours { white-space: nowrap; }
 #popupTable td.hours .window { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
