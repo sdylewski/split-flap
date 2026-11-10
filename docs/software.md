@@ -145,8 +145,9 @@ watchdog resets, so that build leaves it off.
   syncs/errors/misses, I2C traffic, and an event log the master pulls into its own log.
 - Resets its own I2C hardware if it ever gets stuck mid-transfer (the 1.3.0 firmware could
   lock the whole bus).
-- Switches the motor coils off 100 ms after every move (`holdMs`): an energized 28BYJ-48 draws
-  about 200 mA. During quiet hours (2.3+) the CPU goes into deep sleep until the master wakes it.
+- Keeps the motor coils off whenever idle (switched off `holdMs` = 100 ms after each move, as in
+  the original; now adjustable). During quiet hours (2.3+) the CPU also goes into deep sleep until
+  the master wakes it.
 - Keeps its tuning (speed limits, timings, sensor polarity, direction, LED, ...) as
   **parameters in EEPROM** (2.1+), changed from the console with `param` - no reflashing.
   See [console.md](./console.md#unit-parameters-param).

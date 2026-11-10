@@ -4,24 +4,42 @@
 
 ![Split Flap Display](./Images/Split-Flap.jpg)
 
-This fork builds on the brilliant [original project](https://github.com/Dave19171/split-flap) by
-[David Königsmann](https://github.com/Dave19171) and adds an ESP32 master with a modern web
-UI, OTA updates, message scheduling, a console for in-place calibration, unit diagnostics and
-rewritten firmware, while keeping the 3D-printable mechanical design.
+A ten-character split-flap display you can print and build yourself. This fork keeps the
+mechanical design, PCB and 3D-printed parts of the projects it builds on (see
+[Credits](#credits)) and **rewrites the firmware**: an **ESP32** master with a new web UI, a
+console, live data (weather, BART, 3D printers), pop-ups, and unit firmware that tracks its own
+position and reports how it's doing.
 
-## Feature Highlights
+## What's different in this fork
 
-- ESP32 master with a fast web UI at `http://flappy.local`: text, clock, date, countdown,
-  train station, random phrases and famous numbers, scheduled messages and quiet hours
-- One console on the web page, telnet and USB serial, including **calibrating units in
-  place** (press Enter when a flap drops)
-- Unit firmware that re-syncs at every magnet pass, learns its motor's steps per turn and
-  reports diagnostics: supply voltage, slipping, missed magnets, reboots, I2C errors
-- Self-healing I2C bus, status LED blink codes, one log with levels everywhere
-- Live data: weather, real-time BART departures, Klipper 3D printer progress and "print done"
-  alerts, plus a wave reveal effect - see [`docs/integrations.md`](./docs/integrations.md)
-- Messages from Home Assistant, Siri Shortcuts or any HTTP client
-- OTA updates, JSON API, crash reports over WiFi, PlatformIO builds with pinned versions and CI
+- **ESP32 master** wired into the original ESP-01 socket, instead of the ESP-01S. Serial and I2C no
+  longer share pins, so you get a live log and a console while the display runs.
+- **New web UI** at `http://flappy.local`: text, clock (24-hour, 12-hour, AM/PM, day in front),
+  date, countdown, **weather**, **real-time BART departures**, **3D printer progress**, train
+  station lines for BART, New York, Chicago, Paris and Copenhagen, random phrases and famous
+  numbers (editable preset lists), scheduled and repeating messages, quiet hours.
+- **Pop-ups**: keep the clock up all day and let "PRINTY DONE", a BART train or a birthday message
+  take over for a while - each with its own priority, duration, timer, hours and weekdays.
+- **Wave reveal**: flaps that start together, one after another, or timed so the letters *land* a
+  chosen interval apart.
+- **Home Assistant and Siri** ("Hey Siri, Flappy") through a small JSON API.
+- **One console** on USB serial, telnet and the web page - including **calibrating units in place**
+  (press Enter when a flap drops; no unscrewing the boards).
+- **Unit firmware 2.x**: re-syncs at every magnet pass, learns its motor's steps per turn,
+  reports supply voltage, slipping and missed magnets, fixes its own I2C hangs, keeps its tuning
+  as parameters you change without reflashing, and sleeps deeply in quiet hours.
+- **OTA updates**, settings that survive updates, crash reports over WiFi, and
+  **PlatformIO builds with pinned versions, host tests and CI**.
+
+The full comparison - including what was *removed* (ESP-01S support in the new firmware, the WiFi
+setup portal) and what has and hasn't been tested on hardware - is in
+**[docs/whats-different.md](./docs/whats-different.md)**.
+
+## Build it
+
+Starting from scratch: print the parts, build the units, then follow
+**[docs/build-guide.md](./docs/build-guide.md)** to wire the ESP32, flash the master and the units,
+and calibrate. Converting an existing build works the same way.
 
 ## Documentation
 
@@ -29,14 +47,15 @@ All documentation lives under [`docs/`](./docs):
 
 | Topic | Description |
 |---|---|
-| [`docs/README.md`](./docs/README.md) | Docs hub + quick start |
+| [`docs/whats-different.md`](./docs/whats-different.md) | What this fork changes, removes and has tested |
+| [`docs/build-guide.md`](./docs/build-guide.md) | **Start here for the firmware:** wiring, flashing, calibrating |
 | [`docs/printing.md`](./docs/printing.md) | BOM, screw list, printed parts, flap tips |
 | [`docs/hardware-build.md`](./docs/hardware-build.md) | PCB soldering, unit assembly, enclosure |
-| [`docs/esp32.md`](./docs/esp32.md) | Wiring the ESP32 master into the ESP-01 header |
-| [`docs/software.md`](./docs/software.md) | Building and flashing both firmwares, web UI, settings, API, troubleshooting |
-| [`docs/console.md`](./docs/console.md) | Console commands, calibration, reading the diagnostics |
-| [`docs/integrations.md`](./docs/integrations.md) | Weather, BART, 3D printers, wave reveal, Home Assistant, Siri |
-| [`docs/SplitFlapInstructions.md`](./docs/SplitFlapInstructions.md) | Legacy PDF converted to Markdown |
+| [`docs/esp32.md`](./docs/esp32.md) | The ESP32 master: wiring to the ESP-01 header, power |
+| [`docs/software.md`](./docs/software.md) | Both firmwares in detail: web UI, settings, API, troubleshooting |
+| [`docs/console.md`](./docs/console.md) | Console commands, calibration, unit parameters, reading the diagnostics |
+| [`docs/integrations.md`](./docs/integrations.md) | Weather, BART, 3D printers, pop-ups, wave reveal, Home Assistant, Siri |
+| [`docs/SplitFlapInstructions.md`](./docs/SplitFlapInstructions.md) | Original assembly instructions (PDF converted to Markdown) |
 
 ## Repository Structure
 
@@ -53,11 +72,15 @@ All documentation lives under [`docs/`](./docs):
 └── Images/, Instructions/
 ```
 
-## Getting Started
+## Credits
 
-1. Print and source parts: [`docs/printing.md`](./docs/printing.md)
-2. Assemble the PCBs, units and enclosure: [`docs/hardware-build.md`](./docs/hardware-build.md)
-3. Wire the ESP32: [`docs/esp32.md`](./docs/esp32.md)
-4. Flash, calibrate and use it: [`docs/software.md`](./docs/software.md)
+This fork stands on a lot of good work:
+
+- The original split-flap design - mechanics, PCB and firmware - by
+  [David Königsmann](https://github.com/Dave19171/split-flap)
+- Additional software updates by [JonnyBooker](https://github.com/JonnyBooker/split-flap)
+- Firmware and UI enhancements by [scientress](https://github.com/scientress/split-flap)
+
+Licensed under the GNU General Public License v3 - see [`LICENSE`](./LICENSE).
 
 Have improvements or fixes? Contributions are welcome - open an issue or a pull request.

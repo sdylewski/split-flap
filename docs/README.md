@@ -5,11 +5,13 @@
 > - Additional software updates by [JonnyBooker](https://github.com/JonnyBooker/split-flap)
 > - Firmware/UI enhancements by [scientress](https://github.com/scientress/split-flap)
 
-**What's new in this fork**
+**What's new in this fork** (the full list: [`whats-different.md`](./whats-different.md))
 
 - ESP32 master (wired into the ESP-01 header) with a new web UI, JSON API and OTA updates
+- Weather, real-time BART, 3D printer status, train lines for several cities, pop-ups with
+  priorities, a wave reveal, Home Assistant and Siri
 - A console on the web page, telnet and USB serial, with in-place unit calibration
-- Unit firmware 2.x: magnet re-sync, learned steps per turn, diagnostics and an event log
+- Unit firmware 2.x: magnet re-sync, learned steps per turn, diagnostics, parameters in EEPROM
 - PlatformIO builds with pinned versions, host tests and GitHub Actions CI
 
 Welcome to the documentation hub for the split-flap display. The goal of this
@@ -23,11 +25,10 @@ below and then dive into the topic that is most relevant for you.
    electronic components ready. See [`printing.md`](./printing.md).
 2. **Assemble the hardware** – solder the PCBs, build the units, wire
    everything and close the enclosure. See [`hardware-build.md`](./hardware-build.md).
-3. **Wire the master** – connect the ESP32 to the ESP-01 header. See
-   [`esp32.md`](./esp32.md).
-4. **Configure the software** – flash the master and unit firmware, set DIP switches,
-   calibrate each unit and verify the system. See [`software.md`](./software.md) and
-   [`console.md`](./console.md).
+3. **Wire and flash** – connect the ESP32 to the ESP-01 header, flash the master and the units,
+   set the DIP switches and calibrate each unit. The step-by-step guide is
+   [`build-guide.md`](./build-guide.md); background in [`esp32.md`](./esp32.md),
+   [`software.md`](./software.md) and [`console.md`](./console.md).
 
 ### BOM & Purchasing Notes
 
@@ -56,6 +57,8 @@ below and then dive into the topic that is most relevant for you.
 | --- | --- |
 | [`printing.md`](./printing.md) | BOM, screw list, printed part manifest and flap printing tips |
 | [`hardware-build.md`](./hardware-build.md) | PCB soldering, unit assembly and enclosure build |
+| [`whats-different.md`](./whats-different.md) | What this fork changes, removes and has tested |
+| [`build-guide.md`](./build-guide.md) | Step by step: wire the ESP32, flash master and units, calibrate |
 | [`esp32.md`](./esp32.md) | Wiring the ESP32 master into the ESP-01 header, power |
 | [`software.md`](./software.md) | Building and flashing, web UI, settings, API, LED codes, troubleshooting |
 | [`console.md`](./console.md) | Console commands, calibration (`cal`), reading the unit diagnostics |

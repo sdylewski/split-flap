@@ -43,7 +43,8 @@ Use the Gerber files in `PCB/` and have one board fabricated per unit. Populate
 
 The first PCB also hosts the hub electronics:
 
-- ESP-01S module + 3.3 V regulator (AMS1117-3.3)
+- ESP-01S module (or an ESP32 dev board wired to the same header, see
+  [esp32.md](./esp32.md)) + 3.3 V regulator (AMS1117-3.3)
 - Level shifting (BSS138 + resistors) for I²C
 - Pull-ups for SDA/SCL
 
@@ -54,8 +55,8 @@ need the 5 V path (leave 3.3 V parts unpopulated).
 
 - Install heat-set inserts before final soldering to avoid reheating populated
   boards.
-- Keep the ESP-01S socket accessible; you will swap the module during firmware
-  work.
+- Keep the ESP-01S socket (header U2) accessible; the ESP32 is wired to it, and the ESP-01S
+  version needs swapping during firmware work.
 - Double-check polarity on electrolytics and regulators.
 
 ## 3. Wiring & Cable Looms
@@ -115,7 +116,8 @@ Each unit consists of:
 - [ ] Hall sensors aligned; magnets glued with consistent polarity and marked
 - [ ] Flaps rotate freely without rubbing
 - [ ] Power path tested (12 V supply, polarity confirmed)
-- [ ] ESP-01S sits firmly on the first PCB with antenna clearances
+- [ ] ESP-01S sits firmly on the first PCB with antenna clearances (or the ESP32 is wired to
+  U2 as in [esp32.md](./esp32.md), with its antenna away from metal)
 - [ ] Enclosure closes without pinching cables
 
 

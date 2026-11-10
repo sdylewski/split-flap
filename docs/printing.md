@@ -46,7 +46,7 @@ All passives are 0805 packages. You need one PCB per flap unit.
 
 | ID | Item | Designators | Qty | LCSC / Notes |
 | --- | --- | --- | --- | --- |
-| 1 | ESP-01S | U2 | 1 | ESP-01S much better than ESP01 |
+| 1 | ESP-01S, **or an ESP32 dev board** | U2 | 1 | This fork's firmware targets an original ESP32 dev board (ESP32-WROOM-32) jumpered into the U2 header instead of the ESP-01S, see [esp32.md](./esp32.md). The ESP-01S only runs the older firmware in `legacy/` |
 | 2 | 10 kΩ resistor | R1–R4 | 4 | LCSC C269742 |
 | 3 | BSS138 MOSFET | Q1–Q2 | 2 | LCSC C78284 |
 | 4 | 330 nF capacitor | C1 | 1 | LCSC C527609 |
@@ -109,8 +109,12 @@ Flaps are the trickiest part—test a few before committing to all 45 × units.
 
 - 13 mA @ 12 V (0.15 W) per unit when idle
 - 186 mA @ 12 V (2.22 W) per unit while flipping
-- 90 mA @ 12 V (1.08 W) for the ESP-01S hub
-- Full 10-unit build with ESP-01S: 220 mA idle / 1.73 A active at 12 V
+- 90 mA @ 12 V (1.08 W) for the ESP-01S hub (an ESP32 draws more than an ESP-01S - not measured
+  for this build; it drops WiFi power and CPU speed during quiet hours)
+- Full 10-unit build with ESP-01S: 220 mA idle / 1.73 A active at 12 V
+
+These figures are from the original build. With unit firmware 2.3+ the Nano's CPU also goes into
+deep sleep during quiet hours (the motor coils are switched off after every move in both versions).
 
 Plan your PSU accordingly (≥25 W recommended).
 

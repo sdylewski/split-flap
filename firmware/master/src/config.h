@@ -2,7 +2,7 @@
 // live in settings (web UI / settings.json), not here.
 #pragma once
 
-#define FIRMWARE_VERSION "4.0.0"
+#define FIRMWARE_VERSION "4.1.0"
 
 // ---- Hardware -----------------------------------------------------------------------------
 // The ESP32 board is jumpered into the display's ESP-01 header U2:
