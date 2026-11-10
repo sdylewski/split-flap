@@ -782,7 +782,7 @@ void captureResetCause() { __asm__ __volatile__("sts %0, r2\n" : : "m"(bootR2) :
 void setup() {
   resetCause = MCUSR;
 #if OPTIBOOT
-  resetCause |= bootR2;
+  if (!(bootR2 & 0xF0)) resetCause |= bootR2;  // only the low four MCUSR bits exist: 0xFF etc. is garbage
 #endif
   MCUSR = 0;
   wdt_disable();

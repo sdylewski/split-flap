@@ -502,16 +502,16 @@ function renderPopups(sources) {
     const days = DAY_LETTERS.map((d, i) =>
       `<label class="day"><input type="checkbox" data-day="${i}" ${(r.days >> i) & 1 ? "checked" : ""}>${d}</label>`).join("");
     const extra = id === "bart"
-      ? `<label class="inline">train <input type="number" data-k="trainMinutes" min="0" max="60" value="${r.trainMinutes || 0}"> min away</label>`
+      ? `<div class="sub"><label class="inline">also when a train is <input type="number" data-k="trainMinutes" min="0" max="60" value="${r.trainMinutes || 0}"> min away (0 = off)</label></div>`
       : "";
     const priorities = ["low", "normal", "high"].map((p) => `<option ${r.priority === p ? "selected" : ""}>${p}</option>`).join("");
-    return `<tr data-source="${id}"><td>${label}</td>` +
+    return `<tr data-source="${id}"><td>${label}${extra}</td>` +
       `<td><input type="checkbox" data-k="enabled" ${r.enabled ? "checked" : ""}></td>` +
       `<td><select data-k="priority">${priorities}</select></td>` +
       `<td><input type="number" data-k="showSeconds" min="3" max="7200" value="${r.showSeconds || 60}"></td>` +
       `<td>${timer ? `<input type="number" data-k="everyMinutes" min="0" max="1440" value="${r.everyMinutes || 0}">` : "event"}</td>` +
       `<td class="hours">${timer ? hoursCell(r) : ""}</td>` +
-      `<td class="days">${timer ? days : ""}</td><td>${extra}</td></tr>`;
+      `<td class="days">${timer ? days : ""}</td></tr>`;
   });
   $("popupTable").querySelector("tbody").innerHTML = rows.join("");
 }

@@ -41,7 +41,7 @@ body {
   color: var(--text);
   font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-header, nav, main { max-width: 980px; margin: 0 auto; padding: 0 16px; }
+header, nav, main { max-width: 1120px; margin: 0 auto; padding: 0 16px; }
 header { padding-top: 18px; }
 .title { display: flex; align-items: center; gap: 12px; }
 h1 { font-size: 22px; margin: 0; letter-spacing: 0.02em; }
@@ -143,11 +143,13 @@ td button { padding: 4px 10px; font-size: 13px; }
   .terminal { height: 360px; }
 }
 
-#popupTable input[type=number] { width: 60px; padding: 5px 4px; }
+#popupTable input[type=number] { width: 56px; padding: 5px 4px; }
 #popupTable th, #popupTable td { padding: 6px 5px; }
-#popupTable input[type=time] { width: 88px; padding: 4px 4px; font-size: 13px; }
+#popupTable input[type=time] { width: 112px; padding: 4px 4px; font-size: 13px; }
+#popupTable .sub { margin-top: 6px; font-size: 13px; color: var(--muted); }
+#popupTable .sub input[type=number] { width: 52px; }
 #popupTable td.hours { white-space: nowrap; }
-#popupTable td.hours .window { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
+#popupTable td.hours .window { display: flex; align-items: center; gap: 2px; margin: 4px 0 0; }
 #popupTable input[type=time]:disabled { opacity: 0.4; }
 #popupTable .dash { color: var(--muted); }
 #popupTable select { width: auto; padding: 5px 6px; }
@@ -171,3 +173,6 @@ details.stations ol {
   font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; columns: 2;
 }
 @media (max-width: 560px) { details.stations ol { columns: 1; } }
+
+#popupTable td:first-child { white-space: normal; width: 220px; }
+#popupTable .sub label.inline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; white-space: normal; }

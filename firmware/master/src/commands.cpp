@@ -184,12 +184,15 @@ static void status(bool all) {
   }
 }
 
-// AVR reset flags. Optiboot restarts itself through the watchdog after a reset-pin/USB reset, so
-// "reset pin + watchdog" is a normal reset; "watchdog" alone means the unit really hung.
+// AVR reset flags (MCUSR): bit 0 power-on, 1 external reset, 2 brown-out, 3 watchdog. Only the low four
+// bits exist: anything else means the value isn't real (some bootloaders hand over garbage), so it's
+// shown as unknown rather than guessing. Power-on is checked first because the brown-out flag is
+// often set together with it during a normal power-up.
 static const char* resetCauseName(uint8_t cause) {
+  if (cause & 0xF0) return "unknown";
+  if (cause & 0x01) return "power on";
   if (cause & 0x04) return "BROWN-OUT";
   if (cause & 0x02) return "reset pin";
-  if (cause & 0x01) return "power on";
   if (cause & 0x08) return "WATCHDOG";
   return "?";
 }
