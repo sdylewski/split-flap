@@ -147,7 +147,7 @@ td button { padding: 4px 10px; font-size: 13px; }
 #popupTable input[type=time] { width: 88px; padding: 4px 4px; font-size: 13px; }
 #popupTable td.hours { white-space: nowrap; }
 #popupTable td.hours .window { display: inline-flex; align-items: center; gap: 2px; margin-left: 6px; }
-#popupTable td.hours .window[hidden] { display: none; }
+#popupTable input[type=time]:disabled { opacity: 0.4; }
 #popupTable .dash { color: var(--muted); }
 #popupTable select { width: auto; padding: 5px 6px; }
 #popupTable td.days { white-space: nowrap; }
@@ -159,3 +159,5 @@ table.numbers td { padding: 4px 6px 4px 0; border-bottom: none; }
 table.numbers input { font-family: ui-monospace, Menlo, Consolas, monospace; text-transform: uppercase; }
 table.numbers td:last-child { width: 1%; }
 input.invalid { border-color: var(--bad); color: var(--bad); }
+
+.current-place { margin: 4px 0 2px; }

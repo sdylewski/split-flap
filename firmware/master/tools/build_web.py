@@ -2,6 +2,7 @@
 # The web server sends index.html.gz for /index.html automatically - about 4x less to transfer.
 Import("env")
 import gzip
+import hashlib
 import os
 import shutil
 
@@ -19,6 +20,11 @@ def build_web(*args, **kwargs):
         if not os.path.isfile(path) or name.startswith("."):
             continue
         data = open(path, "rb").read()
+        if name == "index.html":
+            # app.js?v=<hash>: a new version gets a new URL, so no browser keeps an old copy
+            for asset in ("app.js", "style.css"):
+                digest = hashlib.sha1(open(os.path.join(source, asset), "rb").read()).hexdigest()[:8]
+                data = data.replace(('"%s"' % asset).encode(), ('"%s?v=%s"' % (asset, digest)).encode())
         total_in += len(data)
         if name.endswith((".html", ".js", ".css", ".json", ".svg")):
             out = gzip.compress(data, 9, mtime=0)

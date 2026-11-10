@@ -139,12 +139,14 @@
           </div>
         </div>
         <div class="mode-panel" data-panel="weather">
-          <label for="weatherSearch">Place</label>
+          <p class="current-place">Showing the weather for <strong id="weatherWhere"></strong></p>
           <div class="row">
-            <div><input type="text" id="weatherSearch" placeholder="Search a city, e.g. Oakland"></div>
-            <div><select id="weatherResults"><option value="">-</option></select></div>
+            <div><label for="weatherSearch">Change place: search for your city</label>
+              <input type="text" id="weatherSearch" placeholder="Type a city name, e.g. Oakland"></div>
+            <div id="weatherResultsBox" hidden><label for="weatherResults">Pick the right one</label>
+              <select id="weatherResults"></select></div>
           </div>
-          <p class="hint" id="weatherWhere"></p>
+          <p class="hint" id="weatherPick"></p>
           <div class="row">
             <div><label class="check"><input type="checkbox" id="weatherFahrenheit"> Fahrenheit</label></div>
             <div><label for="weatherSeconds">Seconds per page</label><input type="number" id="weatherSeconds" min="3" max="120"></div>

@@ -161,7 +161,9 @@ function fillForm(s) {
   $("timezone").value = s.timezone;
   // Weather
   weatherPick = null;
-  $("weatherWhere").textContent = `Now: ${s.weatherPlace} (${s.weatherLat.toFixed(3)}, ${s.weatherLon.toFixed(3)})`;
+  $("weatherWhere").textContent = `${s.weatherPlace} (${s.weatherLat.toFixed(2)}, ${s.weatherLon.toFixed(2)})`;
+  $("weatherPick").textContent = "";
+  $("weatherResultsBox").hidden = true;
   $("weatherFahrenheit").checked = s.weatherFahrenheit;
   $("weatherSeconds").value = s.weatherSeconds;
   // BART
@@ -438,24 +440,25 @@ const EVENT_ONLY = ["notify", "scheduled"];
 const DAY_LETTERS = ["S", "M", "T", "W", "T", "F", "S"];
 
 // Hours a timer pop-up may run: "All day" (from/to empty), or a from-to window
-function hoursCell(r) {
-  const allDay = !r.from || !r.to || r.from === r.to;
-  return `<label class="inline"><input type="checkbox" data-k="allDay" ${allDay ? "checked" : ""}> All day</label>` +
-    `<span class="window"${allDay ? " hidden" : ""}><input type="time" data-k="from" value="${allDay ? "" : r.from}">` +
-    `<span class="dash">-</span><input type="time" data-k="to" value="${allDay ? "" : r.to}"></span>`;
+// Suggested hours for a time window: the hours outside quiet hours, or 7am - 9pm
+function defaultHours() {
+  if (settings && settings.quietEnabled) return [settings.quietTo, settings.quietFrom];
+  return ["07:00", "21:00"];
 }
 
-// Unticking "All day": start from the hours outside quiet hours (e.g. 07:00 - 22:00)
+// "All day" ticked: the time boxes show the suggested window, greyed out. Unticked: editable.
+function hoursCell(r) {
+  const allDay = !r.from || !r.to || r.from === r.to;
+  const [from, to] = allDay ? defaultHours() : [r.from, r.to];
+  const off = allDay ? " disabled" : "";
+  return `<label class="inline"><input type="checkbox" data-k="allDay" ${allDay ? "checked" : ""}> All day</label>` +
+    `<span class="window"><input type="time" data-k="from" value="${from}"${off}>` +
+    `<span class="dash">-</span><input type="time" data-k="to" value="${to}"${off}></span>`;
+}
+
 $("popupTable").addEventListener("change", (event) => {
   if (event.target.dataset.k !== "allDay") return;
-  const cell = event.target.closest("td");
-  cell.querySelector(".window").hidden = event.target.checked;
-  if (!event.target.checked) {
-    const from = cell.querySelector('[data-k="from"]');
-    const to = cell.querySelector('[data-k="to"]');
-    if (!from.value) from.value = (settings && settings.quietTo) || "07:00";
-    if (!to.value) to.value = (settings && settings.quietFrom) || "22:00";
-  }
+  event.target.closest("td").querySelectorAll('input[type="time"]').forEach((t) => { t.disabled = event.target.checked; });
 });
 
 function renderPopups(sources) {
@@ -513,13 +516,14 @@ $("weatherSearch").addEventListener("input", () => {
       const r = await fetch(`https://geocoding-api.open-meteo.com/v1/search?count=8&name=${encodeURIComponent(name)}`);
       const data = await r.json();
       const results = data.results || [];
+      $("weatherResultsBox").hidden = false;
       $("weatherResults").innerHTML = results.length
         ? results.map((p, i) => `<option value="${i}">${p.name}, ${p.admin1 || ""} ${p.country_code || ""}</option>`).join("")
-        : '<option value="">No match</option>';
+        : '<option value="">No city found - try another spelling</option>';
       $("weatherResults")._results = results;
       if (results.length) pickPlace(0);
     } catch (e) {
-      $("weatherWhere").textContent = "City search needs internet access from this browser.";
+      $("weatherPick").textContent = "The city search needs internet access from this browser.";
     }
   }, 400);
 });
@@ -528,7 +532,7 @@ function pickPlace(i) {
   const p = ($("weatherResults")._results || [])[i];
   if (!p) return;
   weatherPick = { lat: p.latitude, lon: p.longitude, place: p.name };
-  $("weatherWhere").textContent = `Will use: ${p.name} (${p.latitude.toFixed(3)}, ${p.longitude.toFixed(3)}) - press "Show on display"`;
+  $("weatherPick").textContent = `Selected ${p.name} (${p.latitude.toFixed(2)}, ${p.longitude.toFixed(2)}) - press "Show on display" to use it.`;
 }
 
 function renderPrinters(list) {
