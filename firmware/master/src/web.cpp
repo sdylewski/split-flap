@@ -7,6 +7,7 @@
 
 #include "app.h"
 #include "config.h"
+#include "content.h"
 #include "console.h"
 #include "crash.h"
 #include "display.h"
@@ -206,6 +207,25 @@ void begin() {
     console::runDetached(line);
     sendOk(request);
   }));
+
+  // Built-in station lists (content.h), for the web UI's preview. Constant data: safe from this task.
+  server.on("/api/trainlines", HTTP_GET, [](AsyncWebServerRequest* request) {
+    JsonDocument doc;
+    JsonArray lines = doc["lines"].to<JsonArray>();
+    for (uint8_t i = 0; i < content::TRAIN_LINE_COUNT; i++) {
+      const content::TrainLine* line = content::TRAIN_LINES[i];
+      JsonObject o = lines.add<JsonObject>();
+      String id = line->id;
+      id.replace('_', '-');  // settings use "bart-red"
+      o["id"] = id;
+      o["name"] = line->name;
+      JsonArray stops = o["stops"].to<JsonArray>();
+      for (uint8_t s = 0; s < line->count; s++) stops.add(line->stops[s]);
+    }
+    JsonArray random = doc["random"].to<JsonArray>();
+    for (uint8_t i = 0; i < content::RANDOM_STATION_COUNT; i++) random.add(content::RANDOM_STATIONS[i]);
+    sendJson(request, 200, doc);
+  });
 
   server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* request) {
     uint32_t since = request->hasParam("since") ? strtoul(request->getParam("since")->value().c_str(), nullptr, 10) : 0;

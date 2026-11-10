@@ -114,9 +114,43 @@ function updateTrainPanel(lineToSelect) {
   const lines = TRAIN_CITIES[$("trainCity").value] || [];
   $("trainLine").innerHTML = lines.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
   if (lineToSelect && lines.some(([id]) => id === lineToSelect)) $("trainLine").value = lineToSelect;
+  updateTrainPreview();
 }
 $("trainType").addEventListener("change", () => updateTrainPanel());
 $("trainCity").addEventListener("change", () => updateTrainPanel());
+$("trainLine").addEventListener("change", () => updateTrainPreview());
+$("trainStations").addEventListener("input", () => updateTrainPreview());
+
+// Station list preview (the built-in lists come from the firmware: GET /api/trainlines)
+let trainLineData = null;
+async function updateTrainPreview() {
+  if (!trainLineData) {
+    try {
+      trainLineData = await api("/api/trainlines");
+    } catch (e) {
+      $("trainPreviewTitle").textContent = "Stations (couldn't load the list)";
+      return;
+    }
+  }
+  let title;
+  let stops;
+  if ($("trainType").value === "line") {
+    const line = trainLineData.lines.find((l) => l.id === $("trainLine").value);
+    stops = line ? line.stops : [];
+    title = `Stations on this line (${stops.length})`;
+  } else {
+    const own = $("trainStations").value.split(",").map((s) => s.trim().toUpperCase()).filter((s) => s);
+    stops = own.length ? own : trainLineData.random;
+    title = `${own.length ? "Your" : "Built-in"} random stations (${stops.length})`;
+  }
+  $("trainPreviewTitle").textContent = title;
+  $("trainPreviewList").innerHTML = "";
+  stops.forEach((stop) => {
+    const li = document.createElement("li");
+    li.textContent = stop;
+    $("trainPreviewList").appendChild(li);
+  });
+}
 
 function toDateInput(unix) {
   if (!unix) return "";

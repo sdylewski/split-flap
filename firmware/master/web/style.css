@@ -162,3 +162,12 @@ table.numbers td:last-child { width: 1%; }
 input.invalid { border-color: var(--bad); color: var(--bad); }
 
 .current-place { margin: 4px 0 2px; }
+
+details.stations { margin-top: 10px; }
+details.stations summary { cursor: pointer; color: var(--muted); font-size: 14px; }
+details.stations ol {
+  margin: 8px 0 0; padding: 10px 10px 10px 40px; max-height: 260px; overflow: auto;
+  background: var(--term); color: var(--term-text); border-radius: 8px;
+  font: 13px/1.6 ui-monospace, "SF Mono", Menlo, Consolas, monospace; columns: 2;
+}
+@media (max-width: 560px) { details.stations ol { columns: 1; } }

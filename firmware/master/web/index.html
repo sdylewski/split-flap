@@ -102,6 +102,10 @@
           <div class="row">
             <div><label for="trainSeconds">Seconds per station</label><input type="number" id="trainSeconds" min="5" max="3600"></div>
           </div>
+          <details id="trainPreview" class="stations">
+            <summary id="trainPreviewTitle">Stations</summary>
+            <ol id="trainPreviewList"></ol>
+          </details>
           <div class="random-only">
             <label for="trainStations">Your own station list (comma separated, empty = built-in)</label>
             <textarea id="trainStations" rows="3" placeholder="GRAND CENT, PENN STN., UNION STN."></textarea>
