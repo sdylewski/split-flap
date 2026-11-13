@@ -115,6 +115,8 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
     item["days"] = r.days;
     if (i == SRC_BART) item["trainMinutes"] = r.trainMinutes;
   }
+  o["printerDoneRepeatCount"] = s.printerDoneRepeatCount;
+  o["printerDoneRepeatMinutes"] = s.printerDoneRepeatMinutes;
   o["printerProgressStep"] = s.printerProgressStep;
   o["printerProgressSeconds"] = s.printerProgressSeconds;
   o["printerProgressPriority"] = s.printerProgressPriority;
@@ -241,6 +243,8 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 5000, error) &&
             takeString(p, "waveStyle", s.waveStyle, 12, error) && takeBool(p, "quietPowerSave", s.quietPowerSave, error) &&
             takeBool(p, "quietRehome", s.quietRehome, error) &&
+            takeInt(p, "printerDoneRepeatCount", s.printerDoneRepeatCount, 0, 50, error) &&
+            takeInt(p, "printerDoneRepeatMinutes", s.printerDoneRepeatMinutes, 1, 720, error) &&
             takeInt(p, "printerProgressStep", s.printerProgressStep, 0, 50, error) &&
             takeInt(p, "printerProgressSeconds", s.printerProgressSeconds, 3, 600, error) &&
             takeString(p, "printerProgressPriority", s.printerProgressPriority, 6, error) &&

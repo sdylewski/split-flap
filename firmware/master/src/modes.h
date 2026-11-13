@@ -15,7 +15,10 @@ String status();    // human readable: "clock", "quiet hours until 08:00", ...
 // priority -1 = the "notify" source's defaults. Returns false if it wasn't shown.
 bool notify(const String& text, uint32_t durationMs = 0, int priority = -1);
 // A print finished / failed ("PRINTY DONE")
-void printerEvent(const String& text);
+// `repeat`: for DONE / ERROR - show it again printerDoneRepeatCount more times (see the settings)
+void printerEvent(const String& printer, const String& text, bool repeat);
+// The printer started something new (or went idle): stop repeating its "done" pop-up
+void printerCleared(const String& printer);
 // "PRINTY 40" progress update: own duration and priority, but follows the printers source's on switch
 void printerProgress(const String& text, uint32_t durationMs, int priority);
 

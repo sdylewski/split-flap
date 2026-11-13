@@ -131,6 +131,9 @@ struct Settings {
   std::vector<PrinterConfig> printers;
   // Pop up "PRINTY 40" each time a print passes a multiple of this many percent (0 = off), using the
   // printers source's on switch; shown for printerProgressSeconds at printerProgressPriority
+  // Repeat "PRINTY DONE" / "PRINTY ERROR": this many more times, this many minutes apart (0 = no repeats)
+  int printerDoneRepeatCount = 0;
+  int printerDoneRepeatMinutes = 10;
   int printerProgressStep = 0;
   int printerProgressSeconds = 20;
   String printerProgressPriority = "normal";

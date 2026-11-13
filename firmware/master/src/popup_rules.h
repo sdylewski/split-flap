@@ -52,6 +52,24 @@ inline int progressMilestone(int percent, int step, int& lastMilestone) {
   return milestone;
 }
 
+// A pop-up that repeats: `remaining` more times, `intervalMs` apart. The timer only moves forward when
+// the pop-up was actually shown, so a repeat that comes due while it can't be shown (quiet hours,
+// something more important up) waits and shows as soon as it can.
+struct Repeat {
+  int remaining = 0;
+  uint32_t nextAt = 0;
+  uint32_t intervalMs = 0;
+};
+
+inline bool repeatDue(const Repeat& r, uint32_t now, bool canShow) {
+  return r.remaining > 0 && canShow && (int32_t)(now - r.nextAt) >= 0;  // signed: survives millis() wrap
+}
+
+inline void repeatShown(Repeat& r, uint32_t now) {
+  r.remaining--;
+  r.nextAt = now + r.intervalMs;
+}
+
 // days: bit 0 = Sunday .. bit 6 = Saturday; weekday: 0 = Sunday (struct tm tm_wday)
 inline bool dayMatches(int days, int weekday) { return (days >> weekday) & 1; }
 

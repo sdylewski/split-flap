@@ -295,9 +295,66 @@ void printerProgress(const String& text, uint32_t durationMs, int priority) {
   if (settings::current().sources[SRC_PRINTERS].enabled) showPopup(SRC_PRINTERS, text, "", durationMs, priority);
 }
 
-void printerEvent(const String& text) {
-  const SourceRule& rule = settings::current().sources[SRC_PRINTERS];
-  if (rule.enabled) showPopup(SRC_PRINTERS, text, "", rule.showSeconds * 1000UL, rule.priority);
+// Pending repeats of "PRINTY DONE": one per printer
+struct DoneRepeat {
+  String printer;
+  String text;
+  popup::Repeat timing;
+};
+static std::vector<DoneRepeat> doneRepeats;
+
+void printerCleared(const String& printer) {
+  for (size_t i = 0; i < doneRepeats.size(); i++) {
+    if (doneRepeats[i].printer == printer) {
+      LOGD("popup", "%s: no more repeats of \"%s\" (it started something new)", printer.c_str(), doneRepeats[i].text.c_str());
+      doneRepeats.erase(doneRepeats.begin() + i);
+      return;
+    }
+  }
+}
+
+void printerEvent(const String& printer, const String& text, bool repeat) {
+  const Settings& s = settings::current();
+  const SourceRule& rule = s.sources[SRC_PRINTERS];
+  if (!rule.enabled) return;
+  showPopup(SRC_PRINTERS, text, "", rule.showSeconds * 1000UL, rule.priority);
+  printerCleared(printer);  // a new event replaces older repeats of the same printer
+  if (repeat && s.printerDoneRepeatCount > 0) {
+    DoneRepeat entry;
+    entry.printer = printer;
+    entry.text = text;
+    entry.timing.remaining = s.printerDoneRepeatCount;
+    entry.timing.intervalMs = (uint32_t)s.printerDoneRepeatMinutes * 60000UL;
+    entry.timing.nextAt = millis() + entry.timing.intervalMs;
+    doneRepeats.push_back(entry);
+    LOGI("popup", "%s: \"%s\" will repeat %d more time(s), every %d min", printer.c_str(), text.c_str(),
+         s.printerDoneRepeatCount, s.printerDoneRepeatMinutes);
+  }
+}
+
+// Called every tick: show a repeat when it's due and may be shown (not in quiet hours, not paused,
+// not while something equally important is up). A repeat that can't be shown yet just waits.
+static void checkDoneRepeats(const Settings& s) {
+  const SourceRule& rule = s.sources[SRC_PRINTERS];
+  for (size_t i = 0; i < doneRepeats.size();) {
+    DoneRepeat& r = doneRepeats[i];
+    if (!rule.enabled || s.printerDoneRepeatCount == 0) {  // switched off meanwhile
+      doneRepeats.erase(doneRepeats.begin() + i);
+      continue;
+    }
+    bool canShow = !(app::displayPaused || app::otaActive || inQuiet) &&
+                   popup::admits(rule.priority, current.active, current.priority, millis() - lastPopupEnd);
+    if (popup::repeatDue(r.timing, millis(), canShow) &&
+        showPopup(SRC_PRINTERS, r.text, "", rule.showSeconds * 1000UL, rule.priority)) {
+      popup::repeatShown(r.timing, millis());
+      LOGI("popup", "%s: repeat of \"%s\", %d more", r.printer.c_str(), r.text.c_str(), r.timing.remaining);
+      if (r.timing.remaining <= 0) {
+        doneRepeats.erase(doneRepeats.begin() + i);
+        continue;
+      }
+    }
+    i++;
+  }
 }
 
 // Scheduled messages: show when due; repeating ones move their time forward and stay in the list
@@ -441,6 +498,7 @@ void loop() {
   if (inQuiet) return;
 
   checkScheduled();
+  checkDoneRepeats(s);
   checkTimers(s);
   checkTrains(s);
 

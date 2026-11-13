@@ -115,6 +115,13 @@ every 15 seconds.
 - **In any mode:** when a running print finishes, `PRINTY DONE` pops up (default: high priority,
   5 minutes - the `printers` pop-up rule), then the base mode comes back. A failed print shows
   `PRINTY ERROR`. Not during quiet hours.
+- **Repeat the DONE / ERROR pop-up:** `printerDoneRepeatCount` more times (0 = no repeats, up to 50),
+  `printerDoneRepeatMinutes` apart (default 10). For example 3 repeats every 15 minutes shows
+  `PRINTY DONE` now and again at +15, +30 and +45 minutes. Repeats stop as soon as that printer
+  starts something new, or when the count is used up. A repeat that comes due during quiet hours or
+  while something equally important is up is not lost: it waits and shows as soon as it can (so a
+  print that finishes at 2 am reminds you after quiet hours end). Pending repeats are not saved, so
+  a restart of the display forgets them. They use the printers pop-up's priority and show time.
 - **Progress updates every N percent:** set `printerProgressStep` (Printers panel: "Show progress
   every ... percent", 0 = off). With 10, a pop-up `PRINTY 40` (then `LEFT 1:05` when the printer
   can estimate it) appears each time a print passes 10, 20, 30 ... percent; with 25 at 25, 50 and

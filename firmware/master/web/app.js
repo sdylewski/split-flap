@@ -210,6 +210,8 @@ function fillForm(s) {
   const printerRule = (s.sources && s.sources.printers) || {};
   $("printerNotify").checked = !!printerRule.enabled;
   $("printerNotifySeconds").value = printerRule.showSeconds || 300;
+  $("printerDoneRepeatCount").value = s.printerDoneRepeatCount;
+  $("printerDoneRepeatMinutes").value = s.printerDoneRepeatMinutes;
   $("printerProgressStep").value = s.printerProgressStep;
   $("printerProgressSeconds").value = s.printerProgressSeconds;
   $("printerProgressPriority").value = s.printerProgressPriority;
@@ -309,6 +311,7 @@ $("btnApply").addEventListener("click", () => {
     case "printers":
       Object.assign(patch, {
         sources: { printers: { enabled: $("printerNotify").checked, showSeconds: n("printerNotifySeconds") } },
+        printerDoneRepeatCount: n("printerDoneRepeatCount"), printerDoneRepeatMinutes: n("printerDoneRepeatMinutes"),
         printerProgressStep: n("printerProgressStep"), printerProgressSeconds: n("printerProgressSeconds"),
         printerProgressPriority: $("printerProgressPriority").value,
       });

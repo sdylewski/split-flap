@@ -312,8 +312,12 @@ static void fetchBart(const Settings& s) {
 }
 
 // ---- Printers ------------------------------------------------------------------------------
-static void printerEvent(const String& text) {
-  app::post([text]() { modes::printerEvent(text); });
+static void printerEvent(const String& printer, const String& text, bool repeat) {
+  app::post([printer, text, repeat]() { modes::printerEvent(printer, text, repeat); });
+}
+
+static void printerCleared(const String& printer) {
+  app::post([printer]() { modes::printerCleared(printer); });
 }
 
 // Per printer: the last progress milestone handled for the current print (-1 = no print seen yet)
@@ -358,9 +362,13 @@ static void fetchPrinters(const Settings& s) {
       if (old.name != p.name || !old.reachable || !p.reachable || old.state == p.state) continue;
       LOGI("feeds", "printer %s: %s -> %s", p.name.c_str(), old.state.c_str(), p.state.c_str());
       if (old.state == "printing") {  // pop-up rules (enabled, priority, duration): sources.printers
-        if (p.state == "complete") printerEvent(p.name + " DONE");
-        else if (p.state == "error") printerEvent(p.name + " ERROR");
-        else if (p.state == "cancelled") printerEvent(p.name + " STOPPED");
+        if (p.state == "complete") printerEvent(p.name, p.name + " DONE", true);
+        else if (p.state == "error") printerEvent(p.name, p.name + " ERROR", true);
+        else if (p.state == "cancelled") printerEvent(p.name, p.name + " STOPPED", false);
+      }
+      // After a finished or failed print: as soon as it does anything else, the old news is over
+      if ((old.state == "complete" || old.state == "error") && p.state != "complete" && p.state != "error") {
+        printerCleared(p.name);
       }
     }
     // Progress update every N percent

@@ -192,6 +192,15 @@
             <div><label for="printerNotifySeconds">for (seconds)</label><input type="number" id="printerNotifySeconds" min="3" max="7200"></div>
           </div>
           <div class="row">
+            <div><label for="printerDoneRepeatCount">Repeat "DONE" / "ERROR" this many more times</label>
+              <input type="number" id="printerDoneRepeatCount" min="0" max="50" placeholder="0"></div>
+            <div><label for="printerDoneRepeatMinutes">every (minutes)</label>
+              <input type="number" id="printerDoneRepeatMinutes" min="1" max="720"></div>
+          </div>
+          <p class="hint">Repeats stop when the printer starts something new. One that comes due during quiet hours
+            (or while something more important is up) waits and shows as soon as it can. They are forgotten if the
+            display restarts.</p>
+          <div class="row">
             <div><label for="printerProgressStep">Show progress every (percent, 0 = off)</label>
               <input type="number" id="printerProgressStep" min="0" max="50" placeholder="10"></div>
             <div><label for="printerProgressSeconds">for (seconds)</label>

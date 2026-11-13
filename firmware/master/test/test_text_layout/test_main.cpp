@@ -192,6 +192,31 @@ void test_progress_milestones() {
   TEST_ASSERT_EQUAL_INT(0, progressMilestone(50, 0, last));
 }
 
+void test_repeat_schedule() {
+  using namespace popup;
+  Repeat r;
+  r.remaining = 2;
+  r.intervalMs = 10 * 60000UL;
+  r.nextAt = 1000 + r.intervalMs;                           // first repeat 10 minutes after "done" at t = 1000
+  TEST_ASSERT_FALSE(repeatDue(r, 1000 + 5 * 60000UL, true));  // too early
+  TEST_ASSERT_FALSE(repeatDue(r, r.nextAt, false));            // due, but can't be shown (quiet hours): waits
+  TEST_ASSERT_TRUE(repeatDue(r, r.nextAt + 3600000UL, true));  // shown as soon as it can, even much later
+  uint32_t shownAt = r.nextAt + 3600000UL;
+  repeatShown(r, shownAt);
+  TEST_ASSERT_EQUAL_INT(1, r.remaining);
+  TEST_ASSERT_FALSE(repeatDue(r, shownAt + 60000UL, true));    // the interval counts from when it was shown
+  TEST_ASSERT_TRUE(repeatDue(r, shownAt + r.intervalMs, true));
+  repeatShown(r, shownAt + r.intervalMs);
+  TEST_ASSERT_EQUAL_INT(0, r.remaining);
+  TEST_ASSERT_FALSE(repeatDue(r, 0xFFFFFFFFu, true));          // finished
+  // millis() wrapping around 2^32
+  Repeat w;
+  w.remaining = 1;
+  w.nextAt = 0xFFFFFFF0u + 100;                                // wraps to 84
+  TEST_ASSERT_FALSE(repeatDue(w, 0xFFFFFFF0u, true));
+  TEST_ASSERT_TRUE(repeatDue(w, 200, true));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_short_text_is_one_line);
@@ -211,6 +236,7 @@ int main() {
   RUN_TEST(test_popup_priorities);
   RUN_TEST(test_popup_windows);
   RUN_TEST(test_progress_milestones);
+  RUN_TEST(test_repeat_schedule);
   RUN_TEST(test_content_fits_the_flaps);
   RUN_TEST(test_clock_text);
   return UNITY_END();
