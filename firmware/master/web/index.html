@@ -189,8 +189,20 @@
           </div>
           <div class="row">
             <div><label class="check"><input type="checkbox" id="printerNotify"> Show "NAME DONE" when a print finishes</label></div>
-            <div><label for="printerNotifySeconds">for (seconds)</label><input type="number" id="printerNotifySeconds" min="10" max="7200"></div>
+            <div><label for="printerNotifySeconds">for (seconds)</label><input type="number" id="printerNotifySeconds" min="3" max="7200"></div>
           </div>
+          <div class="row">
+            <div><label for="printerProgressStep">Show progress every (percent, 0 = off)</label>
+              <input type="number" id="printerProgressStep" min="0" max="50" placeholder="10"></div>
+            <div><label for="printerProgressSeconds">for (seconds)</label>
+              <input type="number" id="printerProgressSeconds" min="3" max="600"></div>
+            <div><label for="printerProgressPriority">Priority</label>
+              <select id="printerProgressPriority"><option>low</option><option>normal</option><option>high</option></select></div>
+          </div>
+          <p class="hint">With 10, the display pops up <code>PRINTY 40</code> (and <code>LEFT 1:05</code> when the
+            printer can estimate it) each time a print passes 10, 20, 30 ... percent. With 25: 25, 50 and 75. It never
+            announces 100: that is the "DONE" pop-up. Pop-ups follow the rules on the Pop-ups tab (printers on switch,
+            quiet hours).</p>
         </div>
       </div>
 

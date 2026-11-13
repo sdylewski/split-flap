@@ -291,6 +291,10 @@ bool notify(const String& text, uint32_t durationMs, int priority) {
                    priority >= 0 ? priority : rule.priority);
 }
 
+void printerProgress(const String& text, uint32_t durationMs, int priority) {
+  if (settings::current().sources[SRC_PRINTERS].enabled) showPopup(SRC_PRINTERS, text, "", durationMs, priority);
+}
+
 void printerEvent(const String& text) {
   const SourceRule& rule = settings::current().sources[SRC_PRINTERS];
   if (rule.enabled) showPopup(SRC_PRINTERS, text, "", rule.showSeconds * 1000UL, rule.priority);

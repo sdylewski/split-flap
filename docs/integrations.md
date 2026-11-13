@@ -115,6 +115,13 @@ every 15 seconds.
 - **In any mode:** when a running print finishes, `PRINTY DONE` pops up (default: high priority,
   5 minutes - the `printers` pop-up rule), then the base mode comes back. A failed print shows
   `PRINTY ERROR`. Not during quiet hours.
+- **Progress updates every N percent:** set `printerProgressStep` (Printers panel: "Show progress
+  every ... percent", 0 = off). With 10, a pop-up `PRINTY 40` (then `LEFT 1:05` when the printer
+  can estimate it) appears each time a print passes 10, 20, 30 ... percent; with 25 at 25, 50 and
+  75. It never announces 100 (that's `PRINTY DONE`), and if the display starts while a print is
+  already at 63% it does not announce the milestones it missed. `printerProgressSeconds` (default
+  20) and `printerProgressPriority` (default `normal`) set how long and how important these are;
+  the printers pop-up on/off switch and quiet hours apply.
 - **Mode `printers`:** progress of each printer: `PRINTY 66`, `LEFT 1:05`, `VORON DONE`,
   `VORON IDLE`, `VORON OFF` (not reachable).
 

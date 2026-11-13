@@ -160,6 +160,38 @@ void test_clock_text() {
   TEST_ASSERT_EQUAL_STRING("28TH3:45PM", clockText(15, 45, 28, 1, "12ampm", false, "ordinal", 10).c_str());
 }
 
+void test_progress_milestones() {
+  using namespace popup;
+  int last = -1;
+  // a print seen from the start, every 10 percent
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(0, 10, last));
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(7, 10, last));
+  TEST_ASSERT_EQUAL_INT(10, progressMilestone(10, 10, last));
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(14, 10, last));   // same milestone: nothing new
+  TEST_ASSERT_EQUAL_INT(20, progressMilestone(23, 10, last));
+  TEST_ASSERT_EQUAL_INT(50, progressMilestone(51, 10, last));  // jumped: announce where it is now
+  TEST_ASSERT_EQUAL_INT(90, progressMilestone(97, 10, last));
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(100, 10, last));  // 100 is the "done" pop-up
+  // seen for the first time at 63 %: no catch-up
+  last = -1;
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(63, 10, last));
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(69, 10, last));
+  TEST_ASSERT_EQUAL_INT(70, progressMilestone(70, 10, last));
+  // every 25 percent
+  last = -1;
+  progressMilestone(2, 25, last);
+  TEST_ASSERT_EQUAL_INT(25, progressMilestone(26, 25, last));
+  TEST_ASSERT_EQUAL_INT(50, progressMilestone(50, 25, last));
+  TEST_ASSERT_EQUAL_INT(75, progressMilestone(99, 25, last));
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(100, 25, last));
+  // progress goes back (a new print on the same printer): starts over
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(3, 25, last));
+  TEST_ASSERT_EQUAL_INT(25, progressMilestone(30, 25, last));
+  // off
+  last = -1;
+  TEST_ASSERT_EQUAL_INT(0, progressMilestone(50, 0, last));
+}
+
 int main() {
   UNITY_BEGIN();
   RUN_TEST(test_short_text_is_one_line);
@@ -178,6 +210,7 @@ int main() {
   RUN_TEST(test_param_table);
   RUN_TEST(test_popup_priorities);
   RUN_TEST(test_popup_windows);
+  RUN_TEST(test_progress_milestones);
   RUN_TEST(test_content_fits_the_flaps);
   RUN_TEST(test_clock_text);
   return UNITY_END();

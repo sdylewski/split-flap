@@ -129,6 +129,11 @@ struct Settings {
 
   // 3D printers (Klipper / Moonraker): progress mode + "done" pop-ups (SRC_PRINTERS)
   std::vector<PrinterConfig> printers;
+  // Pop up "PRINTY 40" each time a print passes a multiple of this many percent (0 = off), using the
+  // printers source's on switch; shown for printerProgressSeconds at printerProgressPriority
+  int printerProgressStep = 0;
+  int printerProgressSeconds = 20;
+  String printerProgressPriority = "normal";
 
   // Pop-up rules per source (defaults set in settings.cpp)
   SourceRule sources[SRC_COUNT];

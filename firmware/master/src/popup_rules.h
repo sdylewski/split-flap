@@ -33,6 +33,25 @@ inline bool admits(int priority, bool popupShowing, int showingPriority, uint32_
   return msSinceLastPopup >= LOW_GAP_MS;
 }
 
+// Print progress updates "every N percent". `lastMilestone` is the last multiple of `step` handled for
+// this print (-1 = not seen yet). Returns the milestone to announce now (e.g. 40), or 0 for none.
+//  - the first time a print is seen only records where it is: no catching up on missed milestones
+//  - 100 is never announced: the "done" pop-up covers it
+//  - progress going back (a new print) restarts from the new value
+inline int progressMilestone(int percent, int step, int& lastMilestone) {
+  if (step <= 0 || percent < 0) return 0;
+  int highest = ((99 / step) * step);  // the last milestone below 100
+  int milestone = (percent / step) * step;
+  if (milestone > highest) milestone = highest;
+  if (lastMilestone < 0 || milestone < lastMilestone) {
+    lastMilestone = milestone;
+    return 0;
+  }
+  if (milestone == lastMilestone) return 0;
+  lastMilestone = milestone;
+  return milestone;
+}
+
 // days: bit 0 = Sunday .. bit 6 = Saturday; weekday: 0 = Sunday (struct tm tm_wday)
 inline bool dayMatches(int days, int weekday) { return (days >> weekday) & 1; }
 

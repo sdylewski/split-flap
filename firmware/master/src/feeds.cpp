@@ -14,6 +14,7 @@
 #include "log.h"
 #include "modes.h"
 #include "net.h"
+#include "popup_rules.h"
 #include "settings.h"
 
 namespace feeds {
@@ -315,6 +316,17 @@ static void printerEvent(const String& text) {
   app::post([text]() { modes::printerEvent(text); });
 }
 
+// Per printer: the last progress milestone handled for the current print (-1 = no print seen yet)
+static std::vector<std::pair<String, int>> printerMilestones;
+
+static int& milestoneOf(const String& name) {
+  for (auto& entry : printerMilestones) {
+    if (entry.first == name) return entry.second;
+  }
+  printerMilestones.push_back({name, -1});
+  return printerMilestones.back().second;
+}
+
 static void fetchPrinters(const Settings& s) {
   uint32_t started = millis();
   std::vector<Printer> previous = printers();
@@ -350,6 +362,25 @@ static void fetchPrinters(const Settings& s) {
         else if (p.state == "error") printerEvent(p.name + " ERROR");
         else if (p.state == "cancelled") printerEvent(p.name + " STOPPED");
       }
+    }
+    // Progress update every N percent
+    int& milestone = milestoneOf(p.name);
+    if (p.reachable && (p.state == "printing" || p.state == "paused")) {
+      int announce = popup::progressMilestone((int)(p.progress * 100.0f), s.printerProgressStep, milestone);
+      if (announce > 0) {
+        String text = p.name + " " + String(announce);
+        if (p.minutesLeft >= 0) {
+          char left[16];
+          snprintf(left, sizeof(left), "\nLEFT %d:%02d", p.minutesLeft / 60, p.minutesLeft % 60);
+          text += left;
+        }
+        int priority = popup::parsePriority(s.printerProgressPriority.c_str());
+        uint32_t duration = (uint32_t)s.printerProgressSeconds * 1000UL;
+        LOGI("feeds", "printer %s: %d%% done", p.name.c_str(), announce);
+        app::post([text, duration, priority]() { modes::printerProgress(text, duration, priority); });
+      }
+    } else if (p.reachable) {
+      milestone = -1;  // not printing: the next print starts a new count
     }
     result.push_back(p);
   }

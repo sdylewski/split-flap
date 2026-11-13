@@ -115,6 +115,9 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
     item["days"] = r.days;
     if (i == SRC_BART) item["trainMinutes"] = r.trainMinutes;
   }
+  o["printerProgressStep"] = s.printerProgressStep;
+  o["printerProgressSeconds"] = s.printerProgressSeconds;
+  o["printerProgressPriority"] = s.printerProgressPriority;
   JsonArray printers = o["printers"].to<JsonArray>();
   for (const PrinterConfig& p : s.printers) {
     JsonObject item = printers.add<JsonObject>();
@@ -238,6 +241,9 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 5000, error) &&
             takeString(p, "waveStyle", s.waveStyle, 12, error) && takeBool(p, "quietPowerSave", s.quietPowerSave, error) &&
             takeBool(p, "quietRehome", s.quietRehome, error) &&
+            takeInt(p, "printerProgressStep", s.printerProgressStep, 0, 50, error) &&
+            takeInt(p, "printerProgressSeconds", s.printerProgressSeconds, 3, 600, error) &&
+            takeString(p, "printerProgressPriority", s.printerProgressPriority, 6, error) &&
             takeString(p, "waveOrder", s.waveOrder, 10, error) &&
             takeFloat(p, "weatherLat", s.weatherLat, -90, 90, error) &&
             takeFloat(p, "weatherLon", s.weatherLon, -180, 180, error) &&
@@ -265,6 +271,7 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   if (!p["clock24h"].isNull() && p["clockHours"].isNull()) s.clockHours = (p["clock24h"] | false) ? "24" : "12ampm";
   if (!oneOf(s.clockHours, {"24", "12", "12ampm"})) return error = "clockHours must be 24, 12 or 12ampm", false;
   if (!oneOf(s.clockDay, {"none", "number", "ordinal", "weekday"})) return error = "clockDay must be none, number, ordinal or weekday", false;
+  if (!oneOf(s.printerProgressPriority, {"low", "normal", "high"})) return error = "printerProgressPriority must be low, normal or high", false;
   if (!oneOf(s.waveStyle, {"off", "arrive", "start", "sequential"})) return error = "waveStyle must be off, arrive, start or sequential", false;
   s.bartStation.toUpperCase();
   s.bartDirection.toLowerCase();

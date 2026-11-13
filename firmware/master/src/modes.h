@@ -16,5 +16,7 @@ String status();    // human readable: "clock", "quiet hours until 08:00", ...
 bool notify(const String& text, uint32_t durationMs = 0, int priority = -1);
 // A print finished / failed ("PRINTY DONE")
 void printerEvent(const String& text);
+// "PRINTY 40" progress update: own duration and priority, but follows the printers source's on switch
+void printerProgress(const String& text, uint32_t durationMs, int priority);
 
 }  // namespace modes

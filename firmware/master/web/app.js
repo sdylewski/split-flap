@@ -207,8 +207,12 @@ function fillForm(s) {
   $("bartKey").value = s.bartKey;
   // Printers
   renderPrinters(s.printers || []);
-  $("printerNotify").checked = s.printerNotify;
-  $("printerNotifySeconds").value = s.printerNotifySeconds;
+  const printerRule = (s.sources && s.sources.printers) || {};
+  $("printerNotify").checked = !!printerRule.enabled;
+  $("printerNotifySeconds").value = printerRule.showSeconds || 300;
+  $("printerProgressStep").value = s.printerProgressStep;
+  $("printerProgressSeconds").value = s.printerProgressSeconds;
+  $("printerProgressPriority").value = s.printerProgressPriority;
   // Wave
   $("waveStyle").value = s.waveStyle;
   $("waveOrder").value = s.waveOrder;
@@ -303,7 +307,11 @@ $("btnApply").addEventListener("click", () => {
         bartSeconds: n("bartSeconds"), bartKey: $("bartKey").value.trim() });
       break;
     case "printers":
-      Object.assign(patch, { printerNotify: $("printerNotify").checked, printerNotifySeconds: n("printerNotifySeconds") });
+      Object.assign(patch, {
+        sources: { printers: { enabled: $("printerNotify").checked, showSeconds: n("printerNotifySeconds") } },
+        printerProgressStep: n("printerProgressStep"), printerProgressSeconds: n("printerProgressSeconds"),
+        printerProgressPriority: $("printerProgressPriority").value,
+      });
       break;
     case "famousnumbers":
       Object.assign(patch, { numbers: numbersFromTable(), numberMinSeconds: n("numberMinSeconds"),
