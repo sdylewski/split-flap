@@ -120,6 +120,7 @@ rejected with a message saying what's wrong. The main keys:
 | `DELETE /api/scheduled?at=<unix time>` | Remove a scheduled message |
 | `POST /api/command` | `{"line":"rehome all"}` run a console command (output goes to the log) |
 | `GET /api/log?since=<seq>` | Log lines after a sequence number |
+| `POST /api/weather/refresh` | Download the weather now (the Weather panel's button); the result shows in `/api/state` under `weather` |
 | `POST /api/reboot` | Restart |
 | `ws://flappy.local/ws` | Console: send a line, receive output |
 

@@ -429,6 +429,7 @@ void loop() {
         app::lowPower = false;
         net::setPowerSave(false);
       }
+      feeds::refreshWeather();  // the morning's data, ready before the first weather pop-up
       if (s.quietRehome) units::rehomeAll(unitproto::rpmFromSpeed(s.speed));  // morning check; wakes sleepers
       restart();
     }

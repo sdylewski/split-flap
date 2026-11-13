@@ -13,7 +13,9 @@ namespace feeds {
 
 struct Weather {
   bool valid = false;
-  uint32_t fetchedMs = 0;
+  uint32_t fetchedMs = 0;     // when the data was downloaded
+  uint32_t attemptMs = 0;     // when the last download was tried (success or failure)
+  uint32_t attempts = 0;      // downloads tried since boot
   float now = 0;          // current temperature
   int codeNow = 0;        // WMO weather code
   float high = 0, low = 0;
@@ -48,6 +50,10 @@ struct Printer {
 
 void begin();
 Weather weather();
+
+// Download the weather as soon as possible (the web button, boot, wake-up from quiet hours).
+// Safe from any task; does nothing if a download is already pending.
+void refreshWeather();
 Bart bart();
 std::vector<Printer> printers();
 

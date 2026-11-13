@@ -741,10 +741,62 @@ function renderDevice(state) {
   ];
   (state.printers || []).forEach((p) => facts.push([`Printer ${p.name}`, !p.reachable ? "not reachable"
     : p.state === "printing" ? `printing ${Math.round(p.progress * 100)} %${p.minutesLeft >= 0 ? `, ${p.minutesLeft} min left` : ""}` : p.state]));
-  if (state.weather) facts.push(["Weather", `${Math.round(state.weather.now)}° ${state.weather.word}, high ${Math.round(state.weather.high)}, low ${Math.round(state.weather.low)}, rain ${state.weather.rain} %`]);
+  if (state.weather && state.weather.valid) facts.push(["Weather", `${Math.round(state.weather.now)}° ${state.weather.word}, high ${Math.round(state.weather.high)}, low ${Math.round(state.weather.low)}, rain ${state.weather.rain} %`]);
   if (state.bart) facts.push([`BART ${state.bart.station}`, state.bart.error || state.bart.departures.slice(0, 4).map((d) => `${d.to} ${d.min || "now"}`).join(", ")]);
   $("deviceInfo").innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
 }
+
+// ---- Weather panel: latest data and the download button --------------------------------------
+function agoText(seconds) {
+  if (seconds < 90) return `${seconds} s ago`;
+  if (seconds < 5400) return `${Math.round(seconds / 60)} min ago`;
+  return `${Math.round(seconds / 3600)} h ago`;
+}
+
+function renderWeatherLatest(state) {
+  const w = state.weather;
+  let text;
+  if (!w || !w.attempts) {
+    text = "No weather has been downloaded since the last boot.";
+  } else if (w.valid) {
+    text = `Latest: ${Math.round(w.now)}° ${w.word}, high ${Math.round(w.high)}, low ${Math.round(w.low)}, rain ${w.rain} % - downloaded ${agoText(w.ageS)}.`;
+    if (w.error) text += ` The last attempt (${agoText(w.attemptAgeS)}) failed: ${w.error}`;
+  } else {
+    text = `No weather data yet. The last attempt (${agoText(w.attemptAgeS)}) failed: ${w.error || "no answer"}`;
+  }
+  $("weatherLatest").textContent = text;
+  return w;
+}
+
+$("btnWeatherRefresh").addEventListener("click", async () => {
+  const button = $("btnWeatherRefresh");
+  const status = $("weatherStatus");
+  const before = (lastState && lastState.weather && lastState.weather.attempts) || 0;
+  button.disabled = true;
+  status.className = "status";
+  status.textContent = "Downloading...";
+  try {
+    await api("/api/weather/refresh", { body: {} });
+    // Wait for the display to try (a failed HTTPS attempt can take ~15 s)
+    for (let i = 0; i < 30; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      const state = await api("/api/state");
+      lastState = state;
+      renderWeatherLatest(state);
+      const w = state.weather;
+      if (w && w.attempts > before) {
+        if (w.error) flash(status, "Download failed (details above)", false);
+        else flash(status, "Done");
+        button.disabled = false;
+        return;
+      }
+    }
+    flash(status, "Still waiting - the display hasn't answered yet", false);
+  } catch (error) {
+    flash(status, error.message, false);
+  }
+  button.disabled = false;
+});
 
 async function pollState() {
   try {
@@ -752,6 +804,7 @@ async function pollState() {
     lastState = state;
     $("chipOffline").hidden = true;
     renderBoard(state);
+    renderWeatherLatest(state);
     renderChips(state);
     renderUnits(state);
     renderDevice(state);

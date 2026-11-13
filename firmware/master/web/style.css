@@ -176,3 +176,5 @@ details.stations ol {
 
 #popupTable td:first-child { white-space: normal; width: 220px; }
 #popupTable .sub label.inline { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; white-space: normal; }
+
+.weather-latest { margin: 10px 0 4px; font-size: 14px; }

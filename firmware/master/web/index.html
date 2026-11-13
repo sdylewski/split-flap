@@ -156,7 +156,13 @@
             <div><label for="weatherSeconds">Seconds per page</label><input type="number" id="weatherSeconds" min="3" max="120"></div>
           </div>
           <p class="hint">Cycles: now (<code>57F CLEAR</code>), today's high/low (<code>HI63 LO50</code>), chance of rain
-            (<code>RAIN 40</code> = 40 %). Data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, refreshed every 10 minutes.</p>
+            (<code>RAIN 40</code> = 40 %). Data: <a href="https://open-meteo.com" target="_blank" rel="noopener">Open-Meteo</a>, refreshed every 10 minutes,
+            at boot and when quiet hours end.</p>
+          <p class="weather-latest" id="weatherLatest">No weather data yet.</p>
+          <div class="actions">
+            <button type="button" id="btnWeatherRefresh">Download weather now</button>
+            <span class="status" id="weatherStatus"></span>
+          </div>
         </div>
         <div class="mode-panel" data-panel="bart">
           <div class="row">

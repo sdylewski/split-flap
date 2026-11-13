@@ -26,6 +26,7 @@ updates, so a command can wait a few seconds while flaps are still moving.
 | `ident` | Every unit shows its own address: `0123456789` left to right |
 | `pause` / `resume` | Stop / restart the normal mode |
 | `notify <seconds> <text>` | Show text for a while, then back to the current mode |
+| `weather` | Show the weather data (and why the last download failed, if it did), and download it again now |
 | **Units** | |
 | `status [all]` | Status and firmware of each unit (`all` checks addresses 0-15) |
 | `units` | Diagnostics table (see below) |

@@ -51,13 +51,26 @@ const char* weatherWord(int code) {
 // and, with CONFIG_LWIP_DNS_SUPPORT_MDNS_QUERIES, answers .local names by multicast DNS.
 // (ESPmDNS's MDNS.queryHost() from this task tripped lwIP's thread-safety check and crashed.)
 // Cached for 10 minutes.
+struct CachedHost {
+  String host;
+  String ip;
+  uint32_t at;
+};
+static std::vector<CachedHost> hostCache;
+
+// After a failed connection: look the name up again next time instead of keeping the address
+static void forgetHost(const String& host) {
+  for (size_t i = 0; i < hostCache.size(); i++) {
+    if (hostCache[i].host == host) {
+      hostCache.erase(hostCache.begin() + i);
+      return;
+    }
+  }
+}
+
 static String resolveHost(const String& host) {
-  struct Cached {
-    String host;
-    String ip;
-    uint32_t at;
-  };
-  static std::vector<Cached> cache;
+  using Cached = CachedHost;
+  std::vector<Cached>& cache = hostCache;
   IPAddress literal;
   if (literal.fromString(host)) return host;
   for (Cached& c : cache) {
@@ -165,15 +178,29 @@ static bool getJson(const String& url, JsonDocument& doc, JsonDocument* filter, 
     secure.useBuiltinCACertBundle();
     secure.setHandshakeTimeout(10);
     secure.setTimeout(8000);
+    uint32_t connectStart = millis();
     if (!secure.connect(ip, u.port, u.host.c_str(), nullptr, nullptr, nullptr)) {
       char tls[100] = "";
       secure.lastError(tls, sizeof(tls));
-      return error = String("TLS connect to ") + u.host + " failed: " + tls, false;
+      uint32_t took = millis() - connectStart;
+      // Tell a network problem from a TLS problem: can a plain TCP connection be opened?
+      NetworkClient probe;
+      bool tcpOk = probe.connect(ip, u.port, 3000);
+      probe.stop();
+      forgetHost(u.host);
+      error = String("TLS to ") + u.host + " (" + ip.toString() + ") failed after " + String(took / 1000.0, 1) +
+              " s: " + tls + "; TCP port " + String(u.port) + " " + (tcpOk ? "reachable" : "NOT reachable") +
+              ", WiFi " + String((int)WiFi.RSSI()) + " dBm, " + String(ESP.getFreeHeap()) + " heap free (largest " +
+              String(ESP.getMaxAllocHeap()) + ")";
+      return false;
     }
     client = &secure;
   } else {
     plain.setTimeout(8000);
-    if (!plain.connect(ip, u.port, 5000)) return error = "can't connect to " + u.host, false;
+    if (!plain.connect(ip, u.port, 5000)) {
+      forgetHost(u.host);
+      return error = "can't connect to " + u.host + " (" + ip.toString() + ")", false;
+    }
     client = &plain;
   }
 
@@ -228,10 +255,16 @@ static void fetchWeather(const Settings& s) {
          weatherWord(w.codeNow), w.high, w.low, w.rainChance);
   }
   w.fetchedMs = millis();
+  w.attemptMs = w.fetchedMs;
   xSemaphoreTake(lock, portMAX_DELAY);
-  if (w.valid || !weatherData.valid) weatherData = w;
-  else weatherData.error = w.error;  // keep the last good data, note the error
-  if (w.valid) weatherData.error = "";
+  w.attempts = weatherData.attempts + 1;
+  if (w.valid || !weatherData.valid) {
+    weatherData = w;
+  } else {  // keep the last good data, note the failed attempt
+    weatherData.error = w.error;
+    weatherData.attemptMs = w.attemptMs;
+    weatherData.attempts = w.attempts;
+  }
   xSemaphoreGive(lock);
   logResources("weather", started);
 }
@@ -327,11 +360,17 @@ static void fetchPrinters(const Settings& s) {
 }
 
 // ---- Task ----------------------------------------------------------------------------------
+static volatile bool weatherRequested = false;
+
+void refreshWeather() { weatherRequested = true; }
+
 static void task(void*) {
   uint32_t lastWeather = 0, lastBart = 0, lastPrinters = 0;
   String weatherKey, bartKey;
   Settings s;
   uint32_t seenRevision = 0;
+  uint32_t bootFetchAt = 0;      // when the first weather download runs (after the boot is done)
+  bool bootFetchDone = false;
   while (true) {
     vTaskDelay(pdMS_TO_TICKS(1000));
     if (!net::connected() || app::otaActive) continue;
@@ -341,9 +380,31 @@ static void task(void*) {
     }
     uint32_t now = millis();
 
-    // Fetch right away when the location / station changes, then on a timer
+    // HTTPS checks the server certificate's dates, so wait until the clock has been set (NTP)
+    bool clockSet = net::timeValid();
     String wk = String(s.weatherLat, 4) + String(s.weatherLon, 4) + (s.weatherFahrenheit ? "F" : "C");
-    uint32_t weatherEvery = weather().valid && weather().error.length() == 0 ? 600000 : 30000;  // retry errors sooner
+    Weather current = weather();
+    bool weatherOk = current.valid && current.error.length() == 0;
+    uint32_t weatherEvery = weatherOk ? 600000 : 20000;  // after a failure try again sooner
+
+    // The first download: a few seconds after the clock is set, i.e. once the boot is done
+    if (clockSet && !bootFetchDone) {
+      if (bootFetchAt == 0) bootFetchAt = now + 6000;
+      if ((int32_t)(now - bootFetchAt) >= 0) {
+        bootFetchDone = true;
+        if (!current.valid) {  // the regular timer may already have it: don't download twice
+          weatherRequested = true;
+          LOGI("feeds", "boot finished - downloading the weather");
+        }
+      }
+    }
+    // On demand: the web button, wake-up from quiet hours. Works in any mode, and during quiet hours.
+    if (weatherRequested && clockSet) {
+      weatherRequested = false;
+      lastWeather = now;
+      weatherKey = wk;
+      fetchWeather(s);
+    }
     if (app::lowPower) {
       // Quiet hours: the display is frozen - only keep an eye on the printers, and less often
       if (!s.printers.empty() && now - lastPrinters > 60000) {
@@ -354,13 +415,13 @@ static void task(void*) {
     }
     bool wantWeather = s.mode == "weather" || s.sources[SRC_WEATHER].enabled;
     bool wantBart = s.mode == "bart" || s.sources[SRC_BART].enabled;
-    if (wantWeather && (wk != weatherKey || lastWeather == 0 || now - lastWeather > weatherEvery)) {
+    if (clockSet && wantWeather && (wk != weatherKey || lastWeather == 0 || now - lastWeather > weatherEvery)) {
       weatherKey = wk;
       lastWeather = now;
       fetchWeather(s);
     }
     String bk = s.bartStation + s.bartDirection;
-    if (wantBart && (bk != bartKey || lastBart == 0 || now - lastBart > 30000)) {
+    if (clockSet && wantBart && (bk != bartKey || lastBart == 0 || now - lastBart > 30000)) {
       bartKey = bk;
       lastBart = now;
       fetchBart(s);

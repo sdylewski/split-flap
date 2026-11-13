@@ -12,6 +12,7 @@
 #include "console.h"
 #include "crash.h"
 #include "display.h"
+#include "feeds.h"
 #include "log.h"
 #include "modes.h"
 #include "net.h"
@@ -97,6 +98,7 @@ static void help() {
   println(F("  mode <name>           text clock date countdown trainstation randomphrase famousnumbers"));
   println(F("                        weather bart printers"));
   println(F("  notify <s> <text>     show text for s seconds, then back to the current mode"));
+  println(F("  weather               show the weather data and download it again now"));
   println(F("  unit <addr> <char>    one character on one unit ('blank' for the blank flap)"));
   println(F("  ident                 every unit shows its address: 0123456789 left to right"));
   println(F("  pause / resume        stop / restart the normal mode"));
@@ -423,6 +425,17 @@ void execute(const String& line) {
     } else {
       println(crash::present() ? crash::summary() : String("No crash stored since the last 'crash clear'."));
     }
+  } else if (c == "weather") {
+    feeds::Weather w = feeds::weather();
+    if (w.valid) {
+      cprintf("Weather: %.0f, %s, high %.0f, low %.0f, rain %d%% (downloaded %lus ago)\r\n", w.now,
+              feeds::weatherWord(w.codeNow), w.high, w.low, w.rainChance, (unsigned long)((millis() - w.fetchedMs) / 1000));
+    } else {
+      println("No weather data yet.");
+    }
+    if (w.error.length()) println("Last download failed: " + w.error);
+    feeds::refreshWeather();
+    println("Downloading the weather now - run 'weather' again in a few seconds.");
   } else if (c == "notify") {
     long seconds;
     if (!parseNumber(args.a1, seconds) || seconds < 1 || args.a2.length() == 0) {

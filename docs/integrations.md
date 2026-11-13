@@ -63,8 +63,14 @@ doesn't lose it. In the API: `{"text": "...", "at": <unix time>, "showSeconds": 
 
 ![The Weather panel](screenshots/display-weather.png)
 
-Mode `weather`. Data from [Open-Meteo](https://open-meteo.com) (free, no account), refreshed every
-10 minutes while the mode is on. It cycles three pages:
+Mode `weather`. Data from [Open-Meteo](https://open-meteo.com) (free, no account).
+
+**When it downloads:** a few seconds after boot (once the clock is set), every 10 minutes while the
+weather mode or the weather pop-up is on, when quiet hours end, and whenever you press
+**Download weather now** in the Weather panel (it works in any mode, even during quiet hours). The
+panel shows the latest data and how old it is, and if a download fails it says why. A failed
+download is retried after 20 seconds. The console command `weather` shows the data and downloads
+it again too. It cycles three pages:
 
 | Page | Example | Meaning |
 |---|---|---|

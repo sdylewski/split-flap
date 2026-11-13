@@ -227,6 +227,13 @@ void begin() {
     sendJson(request, 200, doc);
   });
 
+  // The Weather panel's "Download weather now" button
+  server.on("/api/weather/refresh", HTTP_POST, [](AsyncWebServerRequest* request) {
+    feeds::refreshWeather();
+    LOGI("web", "weather refresh requested");
+    sendOk(request);
+  });
+
   server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* request) {
     uint32_t since = request->hasParam("since") ? strtoul(request->getParam("since")->value().c_str(), nullptr, 10) : 0;
     JsonDocument doc;
@@ -297,14 +304,20 @@ String buildState() {
   d["lastMoveMs"] = display::lastMoveMs();
 
   feeds::Weather w = feeds::weather();
-  if (w.valid) {
+  {
     JsonObject o = doc["weather"].to<JsonObject>();
-    o["now"] = w.now;
-    o["word"] = feeds::weatherWord(w.codeNow);
-    o["high"] = w.high;
-    o["low"] = w.low;
-    o["rain"] = w.rainChance;
-    o["ageS"] = (millis() - w.fetchedMs) / 1000;
+    o["valid"] = w.valid;
+    o["attempts"] = w.attempts;
+    o["error"] = w.error;  // the last attempt's error ("" if it worked)
+    if (w.attemptMs) o["attemptAgeS"] = (millis() - w.attemptMs) / 1000;
+    if (w.valid) {
+      o["now"] = w.now;
+      o["word"] = feeds::weatherWord(w.codeNow);
+      o["high"] = w.high;
+      o["low"] = w.low;
+      o["rain"] = w.rainChance;
+      o["ageS"] = (millis() - w.fetchedMs) / 1000;
+    }
   }
   feeds::Bart b = feeds::bart();
   if (b.valid || b.error.length()) {
