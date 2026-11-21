@@ -4,3 +4,15 @@ legacy/Unit/build/
 legacy/ESPMaster/build/
 firmware/master/src/secrets.h
 .pio/
+
+# Local-only: another fork's working copy (it has WiFi credentials in its sketch), tool installers,
+# EDA import scratch files, editor lock/backup/history files
+split-flap-scientress/
+*.vsix
+PCB/easyeda2kicad6_temp/
+PCB/KiCad_Export/.history/
+PCB/KiCad_Export/*-backups/
+PCB/KiCad_Export/*.kicad_prl
+PCB/KiCad_Export/~_autosave-*
+PCB/KiCad_Export/*.lck
+**/*-backups/

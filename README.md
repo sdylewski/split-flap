@@ -28,6 +28,9 @@ position and reports how it's doing.
 - **Unit firmware 2.x**: re-syncs at every magnet pass, learns its motor's steps per turn,
   reports supply voltage, slipping and missed magnets, fixes its own I2C hangs, keeps its tuning
   as parameters you change without reflashing, and sleeps deeply in quiet hours.
+- **Power and heat controls** on the System tab: CPU speed, WiFi sleep and transmit power (fixed, or
+  automatic for mesh networks), with a live status card. The ESP32 runs warmer than an ESP-01S; this
+  is how you cool it down.
 - **OTA updates**, settings that survive updates, crash reports over WiFi, and
   **PlatformIO builds with pinned versions, host tests and CI**.
 
@@ -41,14 +44,22 @@ setup portal) and what has and hasn't been tested on hardware - is in
 
 ![The Pop-ups tab: what may interrupt the base mode, and when](./docs/screenshots/popups.png)
 
+![The System tab's Power and heat card](./docs/screenshots/power.png)
+
+![The Units tab, with a column key explaining supply voltage, magnet corrections and misses](./docs/screenshots/units.png)
+
 More screenshots: [docs/screenshots](./docs/screenshots) (weather, BART, train lines, printers,
 famous numbers, schedule, units, console, system, and a phone-width view).
 
-## Build it
+## Build it, or upgrade your existing display
 
 Starting from scratch: print the parts, build the units, then follow
 **[docs/build-guide.md](./docs/build-guide.md)** to wire the ESP32, flash the master and the units,
-and calibrate. Converting an existing build works the same way.
+and calibrate.
+
+Already have a working display with the ESP-01S? The PCB, units and enclosure stay exactly as they
+are: swap the master for an ESP32 (three wires), then reflash. **[docs/upgrade-esp01-to-esp32.md](./docs/upgrade-esp01-to-esp32.md)**
+explains why, what changes and what doesn't, and how to go back.
 
 ## Documentation
 
@@ -57,6 +68,7 @@ All documentation lives under [`docs/`](./docs):
 | Topic | Description |
 |---|---|
 | [`docs/whats-different.md`](./docs/whats-different.md) | What this fork changes, removes and has tested |
+| [`docs/upgrade-esp01-to-esp32.md`](./docs/upgrade-esp01-to-esp32.md) | **Have an ESP-01S display?** Why and how to move to the ESP32 |
 | [`docs/build-guide.md`](./docs/build-guide.md) | **Start here for the firmware:** wiring, flashing, calibrating |
 | [`docs/printing.md`](./docs/printing.md) | BOM, screw list, printed parts, flap tips |
 | [`docs/hardware-build.md`](./docs/hardware-build.md) | PCB soldering, unit assembly, enclosure |

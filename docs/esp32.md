@@ -68,6 +68,12 @@ The board settings (ESP32 Dev Module, "Minimal SPIFFS" partitions: two 1.9 MB ap
 plus 128 KB for the web files) are in `platformio.ini`; nothing to pick by hand. If an upload
 hangs at `Connecting...`, hold the board's **BOOT** button until writing starts.
 
+## Heat
+
+The ESP32 runs warmer than the ESP-01S, especially in a closed enclosure. Add ventilation, then use
+the web UI's **System -> Power and heat** card (CPU speed, WiFi sleep, transmit power). See
+[upgrade-esp01-to-esp32.md](./upgrade-esp01-to-esp32.md#power-and-heat).
+
 ## LED
 
 Most ESP32 dev boards have an LED on GPIO2. It shows the status blink codes

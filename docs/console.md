@@ -60,7 +60,7 @@ switches don't match its position: the leftmost unit must be address 0. `resume`
 
 ![The Units tab](screenshots/units.png)
 
-The same table is in the console (`units`):
+In the web UI, hover a column heading or a value for an explanation, or open the **Column key** under the table. The same table is in the console (`units`):
 
 ```
 addr fw     status       letter  vcc(min)    syncs miss  err(max) boots steps reset     up     i2c-err

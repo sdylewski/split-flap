@@ -12,6 +12,7 @@
   priorities, a wave reveal, Home Assistant and Siri
 - A console on the web page, telnet and USB serial, with in-place unit calibration
 - Unit firmware 2.x: magnet re-sync, learned steps per turn, diagnostics, parameters in EEPROM
+- Power and heat controls (CPU speed, WiFi sleep, automatic transmit power for mesh networks)
 - PlatformIO builds with pinned versions, host tests and GitHub Actions CI
 
 Welcome to the documentation hub for the split-flap display. The goal of this
@@ -25,6 +26,8 @@ below and then dive into the topic that is most relevant for you.
    electronic components ready. See [`printing.md`](./printing.md).
 2. **Assemble the hardware** – solder the PCBs, build the units, wire
    everything and close the enclosure. See [`hardware-build.md`](./hardware-build.md).
+   *Already have an ESP-01S display?* Read [`upgrade-esp01-to-esp32.md`](./upgrade-esp01-to-esp32.md)
+   first: the hardware stays, only the master and the firmware change.
 3. **Wire and flash** – connect the ESP32 to the ESP-01 header, flash the master and the units,
    set the DIP switches and calibrate each unit. The step-by-step guide is
    [`build-guide.md`](./build-guide.md); background in [`esp32.md`](./esp32.md),

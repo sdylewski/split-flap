@@ -6,7 +6,8 @@ controller moves from an ESP-01S to an ESP32. This page lists what changed, what
 what has and hasn't been tested on real hardware.
 
 The previous firmware (ESP-01S master, unit 1.3.0, the USB calibration tools) is kept in
-[`legacy/`](../legacy). To move an existing build to this firmware, follow the
+[`legacy/`](../legacy). To move an existing build to this firmware, read the
+[upgrade guide](./upgrade-esp01-to-esp32.md) (why, what changes, how to go back) and follow the
 [build guide](./build-guide.md).
 
 ## At a glance
@@ -32,6 +33,15 @@ The previous firmware (ESP-01S master, unit 1.3.0, the USB calibration tools) is
 - Several bugs of the ESP32 platform were hit and worked around while building this (an HTTP
   client call that crashes when a time-sync lookup is pending, an incompatible AsyncTCP, a
   mesh-WiFi connection problem). They are documented in the commit history.
+
+**Power and heat**
+- System tab -> Power and heat: CPU speed (240/160/80 MHz), WiFi sleep (off / light / deep) and
+  transmit power (full / automatic / low), plus a live status card (what is really in effect, signal,
+  access point, mesh nodes seen, chip temperature if available). Quiet hours add to these.
+- Made for mesh WiFi: *automatic* transmit power follows the signal (strong -> turn the radio down,
+  weak -> back to full) so moving the display needs no changes; WiFi sleep *light* keeps
+  `flappy.local` working, *deep* may not; and if WiFi drops 3 times in 10 minutes while saving
+  power, full WiFi power is used for 30 minutes.
 
 **Display**
 - Non-blocking: the display is a state machine that never stalls the web server or the console.

@@ -66,7 +66,7 @@ The display pauses during an update (LED solid on) and reboots when it's done.
 - **Schedule** – messages at a set time, optionally repeating (a pop-up, or "keep showing"), quiet hours.
 - **Units** – status and diagnostics per unit, re-home and calibrate buttons.
 - **Console** – the same command console as telnet/serial, in the browser.
-- **System** – firmware, memory, WiFi, time zone, unit count, log level, live log, reboot.
+- **System** – firmware, memory, WiFi, **power and heat** (CPU speed, WiFi sleep, transmit power, with a live status card), time zone, unit count, log level, live log, reboot.
 
 Screenshots:
 
@@ -80,6 +80,7 @@ Screenshots:
 | Schedule (messages, quiet hours) | [schedule.png](screenshots/schedule.png) |
 | Units | [units.png](screenshots/units.png) |
 | System | [system.png](screenshots/system.png) |
+| System, Power and heat card | [power.png](screenshots/power.png) |
 | Phone width | [mobile-display.png](screenshots/mobile-display.png) |
 
 Edit the UI in `firmware/master/web/`; `pio run -t uploadfs` (or `-e ota`) publishes it.
@@ -105,6 +106,10 @@ rejected with a message saying what's wrong. The main keys:
 | `quietEnabled` `quietFrom` `quietTo` `quietBlank` | off, 22:00, 08:00 | No display changes during these hours |
 | `quietPowerSave` | true | During quiet hours: WiFi modem sleep, CPU at 80 MHz, no unit polling, units (2.3+) in deep sleep |
 | `quietRehome` | true | When quiet hours end, every unit re-homes (a full turn) before the mode resumes |
+| `cpuMhz` | 240 | CPU speed: 240, 160 or 80 MHz (quiet hours use at most 80) |
+| `wifiSleep` | `off` | WiFi modem sleep: `off`, `min` (wakes every beacon, keeps `flappy.local` working on mesh networks), `max` (wakes less often; may make `flappy.local` stop resolving) |
+| `txPower` | `max` | WiFi transmit power: `max` (19.5 dBm), `auto` (8.5-19.5 dBm following the signal strength), `low` (11 dBm) |
+| `wifiFallback` | true | If WiFi drops 3 times in 10 minutes while saving power, use full WiFi power for 30 minutes |
 | `waveStyle` / `waveMs` / `waveOrder` | `off` / 300 / `left` | Wave reveal, see [integrations.md](./integrations.md#wave-reveal) |
 | `trainType` / `trainLine` | `random` / | Train station mode: random stations, or a line in order: NYC 7/1/A, CTA Red/Blue, Paris Metro 1/14, Copenhagen M1/M2, BART, Eurostar, Thameslink, Acela, California coast |
 | weather, BART, printers | | See [integrations.md](./integrations.md) |
