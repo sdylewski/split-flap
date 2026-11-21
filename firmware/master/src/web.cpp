@@ -60,6 +60,8 @@ static void applySettingsPatch(AsyncWebServerRequest* request, JsonVariant& json
       return;
     }
     bool timezoneChanged = updated.timezone != before.timezone;
+    bool powerChanged = updated.wifiSleep != before.wifiSleep || updated.cpuMhz != before.cpuMhz ||
+                        updated.txPower != before.txPower || updated.wifiFallback != before.wifiFallback;
     // Editor state only (the Numbers panel autosaves its lists): save, but don't restart the
     // mode - in famous-numbers mode a restart would flip to a new number on every keystroke pause
     bool editorOnly = true;
@@ -72,6 +74,7 @@ static void applySettingsPatch(AsyncWebServerRequest* request, JsonVariant& json
       return;
     }
     if (timezoneChanged) net::setTimezone(updated.timezone);
+    if (powerChanged) net::applyPower();
     app::displayPaused = false;
     modes::restart();
     LOGI("web", "settings changed: %s", patch.c_str());
@@ -280,6 +283,21 @@ String buildState() {
   wifi["rssi"] = net::rssi();
   wifi["ip"] = net::ip();
   wifi["drops"] = net::reconnects();
+
+  {
+    net::PowerStatus p = net::powerStatus();
+    JsonObject o = doc["power"].to<JsonObject>();
+    o["cpuMhz"] = p.cpuMhz;
+    o["wifiSleep"] = p.wifiSleep;
+    o["txDbm"] = p.txDbm;
+    o["quiet"] = app::lowPower;
+    o["fallback"] = p.fallback;
+    o["fallbackMinutes"] = p.fallbackMinutesLeft;
+    o["meshNodes"] = p.meshNodes;
+    o["bssid"] = p.bssid;
+    o["channel"] = p.channel;
+    if (!isnan(p.chipTempC) && p.chipTempC > -40 && p.chipTempC < 150) o["chipTempC"] = p.chipTempC;
+  }
 
   JsonObject clock = doc["time"].to<JsonObject>();
   struct tm t;

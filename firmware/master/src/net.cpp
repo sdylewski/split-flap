@@ -5,6 +5,7 @@
 #include <LittleFS.h>
 #include <WiFi.h>
 #include <esp_sntp.h>
+#include <esp_wifi.h>
 
 #include "app.h"
 #include "config.h"
@@ -26,6 +27,17 @@ static bool timeLogged = false;
 static bool scanning = false;
 static bool roamScan = false;      // scan started to look for a stronger node while connected
 static uint32_t lastRoamCheck = 0;
+static int meshNodes = 0;               // access points with our network name in the last scan
+
+// Power saving that makes WiFi drop is worse than none: after 3 drops in 10 minutes go back to full
+// WiFi power for 30 minutes (settings.wifiFallback)
+static const int FALLBACK_DROPS = 3;
+static const uint32_t FALLBACK_WINDOW_MS = 10UL * 60000;
+static const uint32_t FALLBACK_HOLD_MS = 30UL * 60000;
+static uint32_t recentDrops[FALLBACK_DROPS] = {0};
+static uint32_t fallbackUntil = 0;      // millis() when full power ends; 0 = not in fall-back
+static wifi_power_t txTier = WIFI_POWER_19_5dBm;
+static uint32_t lastTxCheck = 0;
 
 const char* reasonName(int reason) {
   switch (reason) {
@@ -88,6 +100,7 @@ static BestAp bestAp() {
       best.index = i;
     }
   }
+  meshNodes = best.count;
   return best;
 }
 
@@ -111,11 +124,90 @@ static void connectBest() {
 
 static void startWifi() { startScan(false); }
 
-void setPowerSave(bool on) {
-  WiFi.setSleep(on ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);
-  setCpuFrequencyMhz(on ? 80 : 240);
-  LOGI("power", "%s: WiFi %s, CPU %d MHz", on ? "power saving" : "full speed", on ? "modem sleep" : "always on",
-       (int)getCpuFrequencyMhz());
+// ---- Power ----------------------------------------------------------------------------------
+// Automatic transmit power: strong signal (next to the router) -> turn the radio down; weak signal
+// (moved next to a far extender) -> full power. The signal we measure is the router's, so it is only
+// a guide for ours: tiers stay conservative (never below 8.5 dBm) and step UP at once but DOWN only
+// with 4 dB of margin, so it doesn't flap.
+static wifi_power_t autoTxTier(int rssi) {
+  static const struct { int rssi; wifi_power_t tier; } steps[] = {
+      {-50, WIFI_POWER_8_5dBm}, {-60, WIFI_POWER_11dBm}, {-67, WIFI_POWER_15dBm}};
+  wifi_power_t wanted = WIFI_POWER_19_5dBm;
+  for (const auto& step : steps) {
+    int margin = txTier <= step.tier ? 0 : 4;  // currently at or below this tier: no extra margin to stay
+    if (rssi >= step.rssi + margin) {
+      wanted = step.tier;
+      break;
+    }
+  }
+  return wanted;
+}
+
+static void updateTxPower(bool force) {
+  const Settings& s = settings::current();
+  wifi_power_t wanted = WIFI_POWER_19_5dBm;
+  if (fallbackUntil == 0) {
+    if (s.txPower == "low") wanted = WIFI_POWER_11dBm;
+    else if (s.txPower == "auto" && isConnected) wanted = autoTxTier(WiFi.RSSI());
+  }
+  if (wanted != txTier || force) {
+    txTier = wanted;
+    WiFi.setTxPower(txTier);
+    LOGD("power", "WiFi transmit power %.1f dBm", txTier / 4.0f);
+  }
+}
+
+void applyPower() {
+  const Settings& s = settings::current();
+  bool fallback = fallbackUntil != 0;
+
+  String sleep = s.wifiSleep;
+  if (app::lowPower && sleep == "off") sleep = "min";  // quiet hours: at least modem sleep
+  if (fallback) sleep = "off";
+  WiFi.setSleep(sleep == "min" ? WIFI_PS_MIN_MODEM : sleep == "max" ? WIFI_PS_MAX_MODEM : WIFI_PS_NONE);
+
+  int mhz = app::lowPower ? min(s.cpuMhz, 80) : s.cpuMhz;
+  if ((int)getCpuFrequencyMhz() != mhz) setCpuFrequencyMhz(mhz);
+  updateTxPower(true);
+
+  LOGI("power", "WiFi sleep %s, CPU %d MHz, transmit %.1f dBm%s%s", sleep.c_str(), (int)getCpuFrequencyMhz(),
+       txTier / 4.0f, app::lowPower ? " (quiet hours)" : "", fallback ? " (fall-back: WiFi kept dropping)" : "");
+}
+
+static bool savingWifiPower() {
+  const Settings& s = settings::current();
+  return s.wifiSleep != "off" || s.txPower != "max" || app::lowPower;
+}
+
+// A drop happened: if that's the 3rd within 10 minutes and we're saving WiFi power, stop saving it
+static void noteDrop() {
+  uint32_t now = millis();
+  for (int i = 0; i < FALLBACK_DROPS - 1; i++) recentDrops[i] = recentDrops[i + 1];
+  recentDrops[FALLBACK_DROPS - 1] = now;
+  bool burst = recentDrops[0] != 0 && now - recentDrops[0] < FALLBACK_WINDOW_MS;
+  if (burst && fallbackUntil == 0 && settings::current().wifiFallback && savingWifiPower()) {
+    fallbackUntil = now + FALLBACK_HOLD_MS;
+    LOGW("power", "WiFi dropped %d times in 10 minutes - full WiFi power for 30 minutes", FALLBACK_DROPS);
+    applyPower();
+  }
+}
+
+PowerStatus powerStatus() {
+  PowerStatus st;
+  st.cpuMhz = (int)getCpuFrequencyMhz();
+  wifi_ps_type_t ps = WIFI_PS_NONE;
+  esp_wifi_get_ps(&ps);
+  st.wifiSleep = ps == WIFI_PS_MIN_MODEM ? "min" : ps == WIFI_PS_MAX_MODEM ? "max" : "off";
+  int8_t quarterDbm = 0;
+  esp_wifi_get_max_tx_power(&quarterDbm);
+  st.txDbm = quarterDbm / 4.0f;
+  st.fallback = fallbackUntil != 0;
+  st.fallbackMinutesLeft = st.fallback ? (int)((fallbackUntil - millis()) / 60000) + 1 : 0;
+  st.meshNodes = meshNodes;
+  st.bssid = isConnected ? WiFi.BSSIDstr() : String();
+  st.channel = isConnected ? (int)WiFi.channel() : 0;
+  st.chipTempC = temperatureRead();  // NAN on chips without a usable sensor
+  return st;
 }
 
 void setTimezone(const String& posixTz) {
@@ -152,7 +244,6 @@ void begin() {
   WiFi.persistent(false);  // credentials come from secrets.h; don't wear out flash
   WiFi.setHostname(HOSTNAME);
   WiFi.mode(WIFI_STA);
-  WiFi.setSleep(false);  // modem sleep adds 100-300 ms to every request
   WiFi.setAutoReconnect(true);
 #if NET_STATIC_IP
   if (!WiFi.config(IPAddress(NET_IP), IPAddress(NET_GATEWAY), IPAddress(NET_SUBNET), IPAddress(NET_DNS1),
@@ -160,6 +251,7 @@ void begin() {
     LOGE("wifi", "static IP configuration failed");
   }
 #endif
+  applyPower();
   setTimezone(settings::current().timezone);
   LOGI("wifi", "connecting to \"%s\"...", SECRET_WIFI_SSID);
   led::set(led::CONNECTING);
@@ -170,6 +262,7 @@ void loop() {
   if (gotIpEvent) {
     gotIpEvent = false;
     upSince = millis();
+    updateTxPower(true);
     LOGI("wifi", "connected: ip %s, rssi %d dBm, channel %d, bssid %s", WiFi.localIP().toString().c_str(), (int)WiFi.RSSI(),
          (int)WiFi.channel(), WiFi.BSSIDstr().c_str());
     if (!servicesStarted) startServices();
@@ -178,6 +271,7 @@ void loop() {
     disconnectEvent = false;
     if (upSince != 0) {
       dropCount++;
+      noteDrop();
       LOGW("wifi", "disconnected after %lus: reason %d (%s)", (unsigned long)((millis() - upSince) / 1000),
            disconnectReason, reasonName(disconnectReason));
       upSince = 0;
@@ -203,6 +297,18 @@ void loop() {
     } else {
       connectBest();
     }
+  }
+
+  // Full power ends after the fall-back period; automatic transmit power follows the signal
+  if (fallbackUntil != 0 && (int32_t)(millis() - fallbackUntil) >= 0) {
+    fallbackUntil = 0;
+    memset(recentDrops, 0, sizeof(recentDrops));
+    LOGI("power", "fall-back over - power saving back on");
+    applyPower();
+  }
+  if (millis() - lastTxCheck > 10000) {
+    lastTxCheck = millis();
+    if (settings::current().txPower == "auto") updateTxPower(false);
   }
 
   // Weak signal: every 10 minutes look for a much stronger node of the same network

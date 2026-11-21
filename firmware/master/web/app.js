@@ -220,6 +220,10 @@ function fillForm(s) {
   $("waveOrder").value = s.waveOrder;
   $("waveMs").value = s.waveMs;
   $("quietPowerSave").checked = s.quietPowerSave;
+  $("cpuMhz").value = String(s.cpuMhz);
+  $("wifiSleep").value = s.wifiSleep;
+  $("txPower").value = s.txPower;
+  $("wifiFallback").checked = s.wifiFallback;
   $("quietRehome").checked = s.quietRehome;
   $("waveMsValue").textContent = `${$("waveMs").value} ms`;
   const known = TIMEZONES.find(([name, tz]) => tz === s.timezone);
@@ -670,6 +674,10 @@ $("btnSystem").addEventListener("click", () => {
     unitCount: Number($("unitCount").value), logLevel: $("logLevel").value,
   }, $("systemStatus"));
 });
+$("btnPower").addEventListener("click", () => save({
+  cpuMhz: Number($("cpuMhz").value), wifiSleep: $("wifiSleep").value, txPower: $("txPower").value,
+  wifiFallback: $("wifiFallback").checked,
+}, $("powerStatus")));
 $("btnReboot").addEventListener("click", async () => {
   if (!confirm("Reboot the display controller?")) return;
   await api("/api/reboot", { body: {} }).catch(() => {});
@@ -710,7 +718,7 @@ function renderChips(state) {
     ? ` · line ${state.display.lineIndex + 1}/${state.display.lineCount}` : "");
 }
 
-function cell(text, cls = "") { return `<td class="${cls}">${text}</td>`; }
+function cell(text, cls = "", tip = "") { return `<td class="${cls}"${tip ? ` title="${tip}"` : ""}>${text}</td>`; }
 
 function renderUnits(state) {
   const rows = state.units.map((u) => {
@@ -720,10 +728,14 @@ function renderUnits(state) {
     const supplyClass = i && i.vccMin && i.vccMin < 4500 ? "warn" : "";
     const magnet = i ? `${i.syncs} · ${i.lastSyncError > 0 ? "+" : ""}${i.lastSyncError} (${i.maxSyncError})` : "–";
     const magnetClass = i && i.maxSyncError > 10 ? "warn" : "";
+    const supplyTip = i ? `Now ${(i.vcc / 1000).toFixed(2)} V (motor idle); lowest while the motor was running ${i.vccMin ? (i.vccMin / 1000).toFixed(2) + " V" : "not measured yet"}` : "";
+    const magnetTip = i ? `Magnet passed ${i.syncs} times; last correction ${i.lastSyncError} steps; largest correction ${i.maxSyncError} steps (2048 steps = one turn)` : "";
     return `<tr>${cell(u.address)}${cell(u.present ? u.statusName : "not answering", statusClass)}` +
       cell(u.firmware + (i && i.noOffset ? " · no offset!" : ""), i && i.noOffset ? "warn" : "") +
-      cell(supply, supplyClass) + cell(magnet, magnetClass) + cell(i ? i.misses : "–", i && i.misses ? "bad" : "") +
-      cell(i ? i.boots : "–") + cell(u.i2cErrors, u.i2cErrors > 20 ? "warn" : "") +
+      cell(supply, supplyClass, supplyTip) + cell(magnet, magnetClass, magnetTip) +
+      cell(i ? i.misses : "–", i && i.misses ? "bad" : "", i ? `${i.misses} time(s) the magnet was not found where expected` : "") +
+      cell(i ? i.boots : "–", "", i ? `The unit has restarted ${i.boots} time(s)` : "") +
+      cell(u.i2cErrors, u.i2cErrors > 20 ? "warn" : "", `${u.i2cErrors} failed I2C transfers since the controller booted`) +
       `<td><button data-rehome="${u.address}">Re-home</button> <button data-cal="${u.address}">Calibrate</button></td></tr>`;
   });
   $("unitTable").querySelector("tbody").innerHTML = rows.join("");
@@ -739,6 +751,26 @@ $("unitTable").addEventListener("click", (event) => {
   }
 });
 $$("[data-command]").forEach((b) => b.addEventListener("click", () => command(b.dataset.command)));
+
+function renderPower(state) {
+  const p = state.power;
+  if (!p) return;
+  const sleepWord = { off: "off (always awake)", min: "light (wakes every beacon)", max: "deep (wakes less often)" };
+  const strength = !state.wifi.connected ? "" : state.wifi.rssi >= -50 ? "very strong" : state.wifi.rssi >= -60 ? "strong"
+    : state.wifi.rssi >= -67 ? "good" : state.wifi.rssi >= -75 ? "fair" : "weak";
+  const facts = [
+    ["Mode", p.fallback ? `<b>Full power</b> for ${p.fallbackMinutes} more min (WiFi kept dropping)`
+      : p.quiet ? "Quiet hours - power saving" : "Normal"],
+    ["CPU", `${p.cpuMhz} MHz`],
+    ["WiFi sleep", sleepWord[p.wifiSleep] || p.wifiSleep],
+    ["Transmit power", `${p.txDbm} dBm`],
+    ["Signal", state.wifi.connected ? `${state.wifi.rssi} dBm (${strength})` : "not connected"],
+    ["Access point", state.wifi.connected ? `${p.bssid}, channel ${p.channel}` : "-"],
+    ["Mesh", p.meshNodes ? `${p.meshNodes} access point${p.meshNodes === 1 ? "" : "s"} seen at the last scan` : "no scan yet"],
+  ];
+  if (p.chipTempC !== undefined) facts.push(["Chip temperature", `${p.chipTempC.toFixed(0)} °C`]);
+  $("powerInfo").innerHTML = facts.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("");
+}
 
 function renderDevice(state) {
   const facts = [
@@ -819,6 +851,7 @@ async function pollState() {
     renderChips(state);
     renderUnits(state);
     renderDevice(state);
+    renderPower(state);
   } catch (error) {
     $("chipOffline").hidden = false;
   }

@@ -323,15 +323,41 @@
         <div class="table-wrap">
           <table id="unitTable">
             <thead><tr>
-              <th>#</th><th>Status</th><th>Firmware</th><th title="Supply voltage now (lowest while moving)">Supply</th>
-              <th title="Times the magnet was passed / steps corrected at the magnet (last, max)">Magnet</th>
-              <th title="Magnet not found where expected">Misses</th><th>Boots</th><th>I2C errors</th><th></th>
+              <th title="I2C address (DIP switches) = position in the display, counting from the left, starting at 0">#</th>
+              <th title="What the unit is doing now: ready, moving, homing, or ERROR: magnet not found">Status</th>
+              <th title="Unit firmware version. 'no offset!' = this unit has no calibration offset stored yet (use Calibrate)">Firmware</th>
+              <th title="Supply voltage in volts, as: now (lowest while the motor was running). Now is read at rest; the lowest shows how far the supply sags under load. Below 4.5 V is flagged.">Supply</th>
+              <th title="Magnet readings, as: passes · last correction (largest correction). Passes = times the magnet was passed. Corrections are in motor steps, 2048 per turn; + means the drum was behind.">Magnet</th>
+              <th title="Times the magnet was not found where expected (slipping drum, weak magnet or bad hall sensor). Should stay 0.">Misses</th>
+              <th title="Times the unit has restarted (power-ups, brown-outs, watchdog)">Boots</th>
+              <th title="Failed I2C reads/writes between this master and the unit since the master booted (wiring, noise, or a hung unit)">I2C errors</th><th></th>
             </tr></thead>
             <tbody></tbody>
           </table>
         </div>
-        <p class="hint">Diagnostics (supply, magnet, misses, boots) need unit firmware 2.0.0. A growing magnet
-          correction or miss count means the drum slips or the hall sensor is flaky. Calibrate opens the console.</p>
+        <p class="hint">Hover a column heading or a value for a short explanation. Diagnostics (supply, magnet, misses, boots)
+          need unit firmware 2.0.0. Calibrate opens the console.</p>
+        <details class="key">
+          <summary>Column key</summary>
+          <dl class="facts">
+            <dt>#</dt><dd>I2C address, the unit's place in the display counting from the left, starting at 0.</dd>
+            <dt>Status</dt><dd>Ready, moving, homing (looking for the magnet, or applying the offset), or ERROR: magnet not found.</dd>
+            <dt>Firmware</dt><dd>Unit firmware version. "no offset!" means no calibration offset is stored yet: run Calibrate.</dd>
+            <dt>Supply</dt><dd><code>4.98 V (4.62)</code> = voltage <b>now</b>, read while the motor is idle, and in parentheses the <b>lowest</b>
+              voltage seen while the motor was running. A big gap means the supply or wiring sags under load; the unit is
+              flagged when the lowest value falls below 4.5 V. The motor must have run since boot (or since the stats were
+              cleared) for the lowest value to exist.</dd>
+            <dt>Magnet</dt><dd><code>38 · +1 (3)</code> = three numbers. <b>38</b> is how many times the drum's magnet has passed the hall sensor
+              (about once per turn of the drum; each pass re-checks the unit's position). <b>+1</b> is the <b>last</b> correction, in motor steps (2048 steps =
+              one turn): how far off the unit's counted position was when the magnet passed; + means the drum was behind, - ahead.
+              <b>(3)</b> is the <b>largest</b> correction ever seen (ignoring sign). Small values (a few steps) are normal;
+              flagged when the largest passes 10.</dd>
+            <dt>Misses</dt><dd>Times the magnet did not show up where expected (or a homing turn failed): a slipping drum, a weak magnet or a flaky
+              hall sensor. Should stay 0.</dd>
+            <dt>Boots</dt><dd>How many times the unit has restarted. A rising number means power dips or crashes.</dd>
+            <dt>I2C errors</dt><dd>Failed reads or writes between this controller and the unit since the controller booted: wiring, noise, or a hung unit.</dd>
+          </dl>
+        </details>
       </div>
     </section>
 
@@ -362,6 +388,29 @@
         <h2>Device</h2>
         <dl id="deviceInfo" class="facts"></dl>
         <div class="actions"><button id="btnReboot" class="danger">Reboot</button></div>
+      </div>
+      <div class="card">
+        <h2>Power and heat</h2>
+        <dl id="powerInfo" class="facts"></dl>
+        <div class="row">
+          <div><label for="cpuMhz">CPU speed</label>
+            <select id="cpuMhz"><option value="240">240 MHz (full)</option><option value="160">160 MHz</option><option value="80">80 MHz (coolest)</option></select></div>
+          <div><label for="wifiSleep">WiFi sleep</label>
+            <select id="wifiSleep"><option value="off">Off (fastest replies)</option><option value="min">Light (wakes every beacon)</option><option value="max">Deep (wakes less often)</option></select></div>
+          <div><label for="txPower">WiFi transmit power</label>
+            <select id="txPower"><option value="max">Full (19.5 dBm)</option><option value="auto">Automatic (follows signal)</option><option value="low">Low (11 dBm)</option></select></div>
+        </div>
+        <ul class="hint">
+          <li><b>CPU speed</b>: 160 or 80 MHz runs cooler and the display doesn't need the speed. Web pages load a little slower.</li>
+          <li><b>WiFi sleep</b>: the radio naps between router beacons. <i>Light</i> keeps <code>flappy.local</code> and pings working and adds
+            ~100 ms per request. <i>Deep</i> saves more but a mesh router may not deliver the multicast that <code>flappy.local</code> needs, so the
+            name can stop resolving (the IP address keeps working).</li>
+          <li><b>Transmit power</b>: <i>Automatic</i> turns the radio down while the signal is strong (next to a router) and back up when it
+            gets weak (next to a far mesh node), so moving the display needs no changes. <i>Low</i> is fixed.</li>
+          <li>Quiet hours (Display tab) add WiFi sleep and 80 MHz on top of these.</li>
+        </ul>
+        <label class="check"><input type="checkbox" id="wifiFallback"> If WiFi drops 3 times in 10 minutes while saving power, use full WiFi power for 30 minutes</label>
+        <div class="actions"><button id="btnPower">Save</button><span class="status" id="powerStatus"></span></div>
       </div>
       <div class="card">
         <h2>Settings</h2>

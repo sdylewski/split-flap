@@ -102,6 +102,12 @@ struct Settings {
   bool quietPowerSave = true;   // quiet hours: WiFi power save, 80 MHz CPU, units in deep sleep (2.3+)
   bool quietRehome = true;      // when quiet hours end: every unit re-homes (a full turn) before showing
 
+  // ESP32 power / heat (see net::applyPower). Quiet hours with quietPowerSave add to these.
+  String wifiSleep = "off";     // WiFi modem sleep: off | min (wakes every beacon: mesh-safe) | max (wakes less often)
+  int cpuMhz = 240;             // 240 | 160 | 80
+  String txPower = "max";       // WiFi transmit power: max | auto (follows the signal strength) | low (11 dBm)
+  bool wifiFallback = true;     // if power saving makes WiFi drop repeatedly, go back to full power for 30 minutes
+
   // Scheduled messages
   std::vector<ScheduledMessage> scheduled;
 

@@ -112,6 +112,10 @@ button.danger { color: var(--bad); border-color: var(--bad); }
 .table-wrap { overflow-x: auto; }
 table { border-collapse: collapse; width: 100%; font-size: 14px; }
 th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th[title], td[title] { cursor: help; }
+th[title] { text-decoration: underline dotted; text-underline-offset: 3px; }
+.key { margin-top: 10px; font-size: 13px; }
+.key summary { cursor: pointer; color: var(--muted); }
 th { font-size: 12px; color: var(--muted); font-weight: 600; }
 td.good { color: var(--good); }
 td.warn { color: var(--warn); }

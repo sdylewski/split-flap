@@ -12,8 +12,23 @@ bool connected();
 bool timeValid();               // NTP has set the clock
 bool localTime(struct tm& out); // false if the time isn't known yet
 void setTimezone(const String& posixTz);
-// Night: WiFi modem sleep + 80 MHz CPU (slower replies, much less power). Day: full speed.
-void setPowerSave(bool on);
+// Apply the power settings (WiFi sleep, CPU speed, transmit power) plus quiet-hours power saving
+// (app::lowPower). Call after the settings or app::lowPower change; net::loop() also keeps it current
+// (automatic transmit power, the fall-back after repeated drops).
+void applyPower();
+
+struct PowerStatus {
+  int cpuMhz;
+  const char* wifiSleep;     // what the radio is really doing: "off" | "min" | "max"
+  float txDbm;               // transmit power in use
+  bool fallback;             // power saving suspended because WiFi kept dropping
+  int fallbackMinutesLeft;
+  int meshNodes;             // access points with our network name in the last scan (0 = no scan yet)
+  String bssid;              // access point we're connected to
+  int channel;
+  float chipTempC;           // NAN if the chip has no sensor
+};
+PowerStatus powerStatus();
 
 // Diagnostics
 int rssi();

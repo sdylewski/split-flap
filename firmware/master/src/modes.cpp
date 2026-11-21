@@ -482,13 +482,13 @@ void loop() {
       if (s.quietBlank && !booting) display::show("", true);
       if (s.quietPowerSave) {
         app::lowPower = true;
-        net::setPowerSave(true);
+        net::applyPower();
         units::sleepAll();  // only 2.3+ units; the coils of all units are off when idle anyway
       }
     } else {
       if (app::lowPower) {
         app::lowPower = false;
-        net::setPowerSave(false);
+        net::applyPower();
       }
       feeds::refreshWeather();  // the morning's data, ready before the first weather pop-up
       if (s.quietRehome) units::rehomeAll(unitproto::rpmFromSpeed(s.speed));  // morning check; wakes sleepers

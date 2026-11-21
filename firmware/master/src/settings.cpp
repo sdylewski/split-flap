@@ -92,6 +92,10 @@ void toJson(const Settings& s, JsonObject o, bool includeScheduled) {
   o["waveMs"] = s.waveMs;
   o["quietPowerSave"] = s.quietPowerSave;
   o["quietRehome"] = s.quietRehome;
+  o["wifiSleep"] = s.wifiSleep;
+  o["cpuMhz"] = s.cpuMhz;
+  o["txPower"] = s.txPower;
+  o["wifiFallback"] = s.wifiFallback;
   o["waveOrder"] = s.waveOrder;
   o["weatherLat"] = s.weatherLat;
   o["weatherLon"] = s.weatherLon;
@@ -243,6 +247,8 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
             takeString(p, "logLevel", s.logLevel, 10, error) && takeInt(p, "waveMs", s.waveMs, 0, 5000, error) &&
             takeString(p, "waveStyle", s.waveStyle, 12, error) && takeBool(p, "quietPowerSave", s.quietPowerSave, error) &&
             takeBool(p, "quietRehome", s.quietRehome, error) &&
+            takeString(p, "wifiSleep", s.wifiSleep, 4, error) && takeInt(p, "cpuMhz", s.cpuMhz, 80, 240, error) &&
+            takeString(p, "txPower", s.txPower, 4, error) && takeBool(p, "wifiFallback", s.wifiFallback, error) &&
             takeInt(p, "printerDoneRepeatCount", s.printerDoneRepeatCount, 0, 50, error) &&
             takeInt(p, "printerDoneRepeatMinutes", s.printerDoneRepeatMinutes, 1, 720, error) &&
             takeInt(p, "printerProgressStep", s.printerProgressStep, 0, 50, error) &&
@@ -270,6 +276,9 @@ bool merge(const Settings& base, JsonObjectConst p, Settings& s, String& error) 
   if (s.timezone.length() < 3) return error = "timezone must be a POSIX TZ string like PST8PDT,M3.2.0,M11.1.0", false;
   logx::Level level;
   if (!logx::parseLevel(s.logLevel, level)) return error = "logLevel must be debug, info, warn, error or off", false;
+  if (!oneOf(s.wifiSleep, {"off", "min", "max"})) return error = "wifiSleep must be off, min or max", false;
+  if (s.cpuMhz != 80 && s.cpuMhz != 160 && s.cpuMhz != 240) return error = "cpuMhz must be 80, 160 or 240", false;
+  if (!oneOf(s.txPower, {"max", "auto", "low"})) return error = "txPower must be max, auto or low", false;
   if (!oneOf(s.waveOrder, {"left", "right", "center", "random"})) return error = "waveOrder must be left, right, center or random", false;
   // Older settings had clock24h (true/false; the 12-hour clock always showed AM/PM)
   if (!p["clock24h"].isNull() && p["clockHours"].isNull()) s.clockHours = (p["clock24h"] | false) ? "24" : "12ampm";
