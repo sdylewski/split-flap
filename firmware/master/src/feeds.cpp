@@ -14,6 +14,7 @@
 #include "log.h"
 #include "modes.h"
 #include "net.h"
+#include "web.h"
 #include "popup_rules.h"
 #include "settings.h"
 
@@ -160,6 +161,9 @@ class ChunkedStream : public Stream {
   bool done = false;
 };
 
+// NOTE: speeding the CPU up for the TLS handshake (80 -> 240 MHz and back) was tried and makes the WiFi
+// drop ("beacon timeout"), so the CPU speed is never changed here: at 80 MHz a handshake takes ~9 s.
+
 static bool getJson(const String& url, JsonDocument& doc, JsonDocument* filter, String& error) {
   Url u;
   if (!parseUrl(url, u)) return error = "bad URL", false;
@@ -173,11 +177,15 @@ static bool getJson(const String& url, JsonDocument& doc, JsonDocument* filter, 
   if (u.https) {
     // A TLS connection needs ~16 KB contiguous heap for its buffers. Skip a refresh rather than
     // run the whole system out of memory.
-    if (ESP.getMaxAllocHeap() < 24000 || ESP.getFreeHeap() < 50000) {
-      return error = "not enough memory for HTTPS (" + String(ESP.getFreeHeap()) + " free)", false;
+    // (a TLS handshake takes ~40 KB while it runs and gives it back afterwards; it must not leave the
+    // web server without memory, so it only starts with a good margin, and is retried later)
+    if (ESP.getMaxAllocHeap() < 32000 || ESP.getFreeHeap() < 70000) {
+      return error = "waiting for memory (" + String(ESP.getFreeHeap() / 1024) + " KB free) - will retry", false;
     }
+    // Let page loads finish first (up to 5 s): a handshake keeps the CPU busy for seconds at 80 MHz
+    for (int waited = 0; waited < 50 && web::busy(); waited++) vTaskDelay(pdMS_TO_TICKS(100));
     secure.useBuiltinCACertBundle();
-    secure.setHandshakeTimeout(10);
+    secure.setHandshakeTimeout(15);
     secure.setTimeout(8000);
     uint32_t connectStart = millis();
     if (!secure.connect(ip, u.port, u.host.c_str(), nullptr, nullptr, nullptr)) {
@@ -475,7 +483,8 @@ static void task(void*) {
 void begin() {
   lock = xSemaphoreCreateMutex();
   // TLS handshakes need a lot of stack; the log reports how much is left after each fetch
-  xTaskCreatePinnedToCore(task, "feeds", 20480, nullptr, 1, nullptr, 1);
+  // The logged high-water mark shows ~7.5 KB of the stack in use at most (TLS included)
+  xTaskCreatePinnedToCore(task, "feeds", 14336, nullptr, 1, nullptr, 1);
   LOGI("feeds", "background fetcher started (weather, BART, printers)");
 }
 

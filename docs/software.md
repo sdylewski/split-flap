@@ -106,7 +106,7 @@ rejected with a message saying what's wrong. The main keys:
 | `quietEnabled` `quietFrom` `quietTo` `quietBlank` | off, 22:00, 08:00 | No display changes during these hours |
 | `quietPowerSave` | true | During quiet hours: WiFi modem sleep, CPU at 80 MHz, no unit polling, units (2.3+) in deep sleep |
 | `quietRehome` | true | When quiet hours end, every unit re-homes (a full turn) before the mode resumes |
-| `cpuMhz` | 240 | CPU speed: 240, 160 or 80 MHz (quiet hours use at most 80) |
+| `cpuMhz` | 240 | CPU speed: 240, 160 or 80 MHz (quiet hours use at most 80). At 80 MHz a secure (HTTPS) weather or BART download takes about 11 s instead of 2 s, and pages load a bit slower. Don't change the speed from your own code while WiFi is on: switching 80 <-> 240 MHz makes the radio drop ("beacon timeout") |
 | `wifiSleep` | `off` | WiFi modem sleep: `off`, `min` (wakes every beacon, keeps `flappy.local` working on mesh networks), `max` (wakes less often; may make `flappy.local` stop resolving) |
 | `txPower` | `max` | WiFi transmit power: `max` (19.5 dBm), `auto` (8.5-19.5 dBm following the signal strength), `low` (11 dBm) |
 | `wifiFallback` | true | If WiFi drops 3 times in 10 minutes while saving power, use full WiFi power for 30 minutes |
@@ -228,6 +228,8 @@ small; if it shows the one *after*, too big. One flap is about 45 steps: `offset
 | Supply voltage below ~4.6 V while moving | Weak 5 V supply or thin wiring to that unit. |
 | WiFi "auth failed" or "auth expired" in the log | Normal for a few attempts on WPA2/WPA3 mesh routers; the master retries and picks the strongest access point. If it never connects, check `secrets.h`. |
 | `http://flappy.local` says "Web files missing" | Run `pio run -t uploadfs`. |
+| A page loads for some browsers or people and not others, or the display restarts | Check the System tab's "Free memory" line (lowest since boot, largest block, requests answered "busy") and `crash` in the console. The display protects its memory: when it is low, or more than 10 requests are in progress, a new request gets "503 busy" and the page retries by itself. A stored crash that says "abort() ... tcp_poll" or "Task watchdog ... async_tcp" is memory or CPU starvation in the web server. |
+| The display keeps dropping off WiFi ("beacon timeout" in the log, many drops in `wifi`) even with a strong signal | Something is disturbing the radio. Look at what runs at the same rhythm (a retry every 20 s?). One cause found: changing the CPU speed while WiFi is on. Switching the weather pop-up off for a minute and watching `wifi` is a quick way to tell whether the downloads are involved. |
 | `pio` says "Python version must be ..." | PlatformIO's ESP32 platform needs Python 3.10-3.14. Reinstall with `pipx install --python python3.14 platformio`. |
 
 ## 6. Development

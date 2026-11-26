@@ -12,6 +12,7 @@
 //   led        status blink codes
 #include <Arduino.h>
 #include <esp_system.h>
+#include <esp_task_wdt.h>
 
 #include "app.h"
 #include "config.h"
@@ -43,6 +44,9 @@ static const char* resetReason() {
 
 void setup() {
   Serial.begin(SERIAL_BAUD);
+  // Task watchdog 10 s (default 5 s): a slow but working moment (TLS maths, flash writes) must not reboot us
+  esp_task_wdt_config_t watchdog = {.timeout_ms = 10000, .idle_core_mask = 1, .trigger_panic = true};
+  esp_task_wdt_reconfigure(&watchdog);
   logx::begin();
   app::begin();
   led::begin();

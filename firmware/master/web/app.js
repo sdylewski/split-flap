@@ -50,7 +50,12 @@ async function api(path, options = {}) {
     init.headers["Content-Type"] = "application/json";
     init.body = JSON.stringify(options.body);
   }
-  const response = await fetch(path, init);
+  let response = await fetch(path, init);
+  // 503 = the display is protecting its memory ("busy"): wait a moment and ask again
+  for (let attempt = 0; response.status === 503 && attempt < 3; attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    response = await fetch(path, init);
+  }
   const data = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(data.error || `${response.status} ${response.statusText}`);
   return data;
@@ -639,9 +644,12 @@ function renderSchedule(list) {
 
 $("btnSchedule").addEventListener("click", async () => {
   const text = $("schedText").value.trim().toUpperCase();
-  const when = $("schedAt").value;
-  if (!text || !when) return flash($("schedStatus"), "Enter a message and a time", false);
-  const at = Math.floor(new Date(when).getTime() / 1000);
+  const date = $("schedDate").value;
+  const time = $("schedTime").value;
+  if (!text) return flash($("schedStatus"), "Type the message first", false);
+  if (!date) return flash($("schedStatus"), "Pick a date", false);
+  if (!time) return flash($("schedStatus"), "Pick a time (hour and minute)", false);
+  const at = Math.floor(new Date(`${date}T${time}`).getTime() / 1000);
   try {
     await api("/api/message", { body: { text, at, indefinitely: $("schedForever").checked,
       showSeconds: Number($("schedShow").value) || 0, repeatMinutes: Number($("schedRepeatMinutes").value) || 0,
@@ -776,7 +784,7 @@ function renderDevice(state) {
   const facts = [
     ["Firmware", state.version],
     ["Uptime", formatUptime(state.uptime)],
-    ["Free memory", `${Math.round(state.heap / 1024)} KB`],
+    ["Free memory", `${Math.round(state.heap / 1024)} KB (lowest since boot ${Math.round(state.heapMin / 1024)} KB, largest block ${Math.round(state.heapBlock / 1024)} KB${state.refused ? `, ${state.refused} requests answered "busy"` : ""})`],
     ["Address", `${state.wifi.ip} (flappy.local)`],
     ["WiFi", state.wifi.connected ? `${state.wifi.rssi} dBm, ${state.wifi.drops} drop(s) since boot` : "not connected"],
     ["Time", state.time.valid ? `${state.time.local} (${state.time.zone})` : "waiting for NTP"],

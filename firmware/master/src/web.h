@@ -15,6 +15,9 @@
 
 namespace web {
 
+bool busy();          // web requests are being handled right now
+uint32_t rejected();  // requests refused with "503 busy" because memory was low
+
 void begin();
 String buildState();  // main loop: build the /api/state JSON
 

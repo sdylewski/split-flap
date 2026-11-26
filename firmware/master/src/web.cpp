@@ -24,8 +24,23 @@ namespace web {
 static AsyncWebServer server(80);
 static AsyncWebSocket socket("/ws");
 
+// Memory guard. The ESP32 aborts (and reboots) if the network stack can't get memory, which happened
+// when a browser opened many connections at once. So: a request that would arrive when memory is low,
+// or when too many are being handled, gets "503 busy, retry" - a few bytes - instead of the whole
+// display going down.
+static constexpr uint32_t REQUEST_MIN_HEAP = 36000;   // bytes free (TLS downloads wait for much more)
+static constexpr uint32_t REQUEST_MIN_BLOCK = 12000;  // largest free block
+static constexpr int REQUEST_MAX_IN_FLIGHT = 10;
+static volatile int inFlight = 0;
+static volatile uint32_t inFlightFullSince = 0;
+static volatile uint32_t rejectedRequests = 0;
+
+uint32_t rejected() { return rejectedRequests; }
+bool busy() { return inFlight > 0; }
+
 static void sendJson(AsyncWebServerRequest* request, int code, JsonDocument& doc) {
   String body;
+  body.reserve(measureJson(doc) + 1);  // exact size: growing a String by doubling fragments the heap
   serializeJson(doc, body);
   request->send(code, "application/json", body);
 }
@@ -179,6 +194,40 @@ static void collectLog(const logx::Entry& entry, void* context) {
 void begin() {
   socket.onEvent(onSocket);
   server.addHandler(&socket);
+
+  server.addMiddleware([](AsyncWebServerRequest* request, ArMiddlewareNext next) {
+    uint32_t now = millis();
+    // A counter that stays full for 15 s has lost track (a missed disconnect): start over
+    if (inFlight >= REQUEST_MAX_IN_FLIGHT) {
+      if (inFlightFullSince == 0) inFlightFullSince = now;
+      else if (now - inFlightFullSince > 15000) {
+        inFlight = 0;
+        inFlightFullSince = 0;
+      }
+    } else {
+      inFlightFullSince = 0;
+    }
+    if (ESP.getFreeHeap() < REQUEST_MIN_HEAP || ESP.getMaxAllocHeap() < REQUEST_MIN_BLOCK ||
+        inFlight >= REQUEST_MAX_IN_FLIGHT) {
+      static uint32_t lastLog = 0;
+      rejectedRequests++;
+      if (now - lastLog > 10000) {
+        lastLog = now;
+        LOGW("web", "busy: refusing %s (%u free, largest %u, %d in flight, %lu refused so far)", request->url().c_str(),
+             (unsigned)ESP.getFreeHeap(), (unsigned)ESP.getMaxAllocHeap(), (int)inFlight, (unsigned long)rejectedRequests);
+      }
+      AsyncWebServerResponse* busy = request->beginResponse(503, "text/plain", "Busy - try again in a moment");
+      busy->addHeader("Retry-After", "2");
+      busy->addHeader("Cache-Control", "no-store");
+      request->send(busy);
+      return;
+    }
+    inFlight++;
+    request->onDisconnect([]() {
+      if (inFlight > 0) inFlight--;
+    });
+    next();
+  });
   console::setWebSender(webSend);
 
   server.on("/api/state", HTTP_GET, [](AsyncWebServerRequest* request) {
@@ -239,9 +288,11 @@ void begin() {
 
   server.on("/api/log", HTTP_GET, [](AsyncWebServerRequest* request) {
     uint32_t since = request->hasParam("since") ? strtoul(request->getParam("since")->value().c_str(), nullptr, 10) : 0;
+    uint32_t newest = logx::lastSeq();
+    if (since == 0 && newest > 30) since = newest - 30;  // first call: the newest 30 lines (the page polls for the rest)
     JsonDocument doc;
     LogCollect collect{doc["lines"].to<JsonArray>()};
-    uint32_t last = logx::readSince(since, 100, collectLog, &collect);
+    uint32_t last = logx::readSince(since, 40, collectLog, &collect);
     doc["last"] = last;
     sendJson(request, 200, doc);
   });
@@ -276,6 +327,9 @@ String buildState() {
   doc["version"] = FIRMWARE_VERSION;
   doc["uptime"] = millis() / 1000;
   doc["heap"] = ESP.getFreeHeap();
+  doc["heapMin"] = ESP.getMinFreeHeap();          // lowest free memory since boot
+  doc["heapBlock"] = ESP.getMaxAllocHeap();       // largest free block
+  doc["refused"] = rejected();                    // web requests answered "busy" to protect memory
   if (crash::present()) doc["lastCrash"] = crash::summary();
 
   JsonObject wifi = doc["wifi"].to<JsonObject>();
@@ -390,6 +444,7 @@ String buildState() {
     }
   }
   String json;
+  json.reserve(measureJson(doc) + 1);
   serializeJson(doc, json);
   return json;
 }

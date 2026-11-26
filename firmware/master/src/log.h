@@ -10,7 +10,7 @@ namespace logx {
 enum class Level : uint8_t { Debug = 0, Info = 1, Warn = 2, Error = 3, Off = 4 };
 
 constexpr size_t TEXT_MAX = 128;      // longer lines are cut
-constexpr size_t RING_ENTRIES = 120;  // ~20 KB of RAM; RAM is tight while a TLS handshake runs
+constexpr size_t RING_ENTRIES = 64;   // ~10 KB of RAM; RAM is tight while a TLS handshake runs
 
 struct Entry {
   uint32_t seq;
